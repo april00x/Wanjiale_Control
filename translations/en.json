@@ -1,0 +1,23 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Wanjiale Account",
+        "description": "Enter your Wanjiale APP credentials (used to login to the machtalk cloud).",
+        "data": {
+          "username": "Username",
+          "password": "Password",
+          "imei": "IMEI (optional)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect, please check network and credentials",
+      "invalid_auth": "Invalid username or password",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This account is already configured in Home Assistant"
+    }
+  }
+}

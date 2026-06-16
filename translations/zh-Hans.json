@@ -1,0 +1,23 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "万家乐账号",
+        "description": "请输入万家乐 APP 账号密码（通过 machtalk 云端登录）。",
+        "data": {
+          "username": "账号",
+          "password": "密码",
+          "imei": "IMEI（可选）"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "连接失败，请检查网络或账号密码",
+      "invalid_auth": "登录失败：账号或密码错误",
+      "unknown": "未知错误"
+    },
+    "abort": {
+      "already_configured": "该账号已在 Home Assistant 中配置"
+    }
+  }
+}
