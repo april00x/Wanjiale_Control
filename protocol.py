@@ -846,13 +846,10 @@ class WanjialeProtocol:
 
     # ---- 局域网控制 ----
     def send_local_control(self, did: str, as_dict: Dict[str, Any]) -> Dict[str, Any]:
-        """通过局域网发送控制命令并读取响应。
+        """通过局域网发送控制命令（fire-and-forget，不读响应）。
 
-        Java ConnectionManager 使用 NIO Selector 事件驱动：
-        send → Selector 唤醒 → 读响应帧 → MessageManager.b()
-        → PostMessage.onSuccess() → UI 即时更新（< 50ms）。
-
-        此处同步读取 LAN 响应（2s 超时），匹配 Java 的实时性。
+        Java ConnectionManager 使用 NIO Selector 非阻塞 send，
+        此处同步 sendall 后立即返回，不阻塞 executor 线程。
         """
         if not self._local_socket or not self._local_lan_pin:
             raise RuntimeError("请先调用 connect_local()")
@@ -873,25 +870,6 @@ class WanjialeProtocol:
         _LOGGER.debug("sending local control to %s: %s", did, json_str)
         with self._local_lock:
             self._local_socket.sendall(frame)
-
-            start_time = time.time()
-            while time.time() - start_time < 2.0:
-                remaining = 2.0 - (time.time() - start_time)
-                self._local_socket.settimeout(max(remaining, 0.3))
-                try:
-                    raw = self._recv_local_frame()
-                    if raw is None:
-                        continue
-                    result = self._parse_business_response(raw, full_lan_pin)
-                    if isinstance(result, dict) and not result.get("error"):
-                        if result.get("as") or result.get("mid") == mid:
-                            return result
-                except socket.timeout:
-                    continue
-                except ConnectionError:
-                    raise
-                except Exception:
-                    continue
 
         return {"status": "sent", "mid": mid}
 
@@ -1051,8 +1029,12 @@ class WanjialeProtocol:
                 self.close_server()
 
     # ---- 查询设备状态 ----
-    def query_device(self, did: str, timeout: Optional[float] = None) -> Dict[str, Any]:
-        """查询设备状态。"""
+    def query_device(self, did: str, timeout: Optional[float] = None, accept_post: bool = False) -> Dict[str, Any]:
+        """查询设备状态。
+
+        当 accept_post=True 时，也会接受 cmd=post 且带 as 的响应帧
+        （设备通过云端推送的状态快照，通常比 query resp 更快到达）。
+        """
         if timeout is None:
             timeout = self.timeout
 
@@ -1093,6 +1075,8 @@ class WanjialeProtocol:
                     result = self._parse_business_response(raw, self._password_md5)
                     if isinstance(result, dict) and result.get("error"):
                         continue
+                    if accept_post and isinstance(result, dict) and result.get("cmd") == "post" and result.get("as"):
+                        return result
                     resp_mid = result.get("mid") if isinstance(result, dict) else None
                     if resp_mid == mid:
                         return result

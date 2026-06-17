@@ -33,10 +33,11 @@ async def async_setup_entry(
         for dev in api.devices
         if isinstance(dev, (WanjialeStove, WanjialeDisinfect))
     ]
-    # 热水器待机开关
+    # 热水器待机开关 + 增压开关
     for dev in api.devices:
         if isinstance(dev, WanjialeWaterHeater):
             devices.append(WanjialePowerSwitch(dev, coordinator))
+            devices.append(WanjialeBoostSwitch(dev, coordinator))
     async_add_entities(devices, True)
 
 
@@ -95,4 +96,40 @@ class WanjialePowerSwitch(WanjialeEntity, SwitchEntity):
 
     def turn_off(self, **kwargs: Any) -> None:
         self._wh.turn_off()
+        self.schedule_update_ha_state()
+
+
+class WanjialeBoostSwitch(WanjialeEntity, SwitchEntity):
+    """热水器增压开关。
+
+    对应 Java PostMessage dvid="1"=7 (OP_BOOST) + 编码值。
+    dwtype=2 开关型：0=关, 1=开。
+    状态读取 DVID "20" bit0-1。
+    """
+
+    _wh: WanjialeWaterHeater
+    _attr_icon = "mdi:water-pump"
+
+    def __init__(self, device: WanjialeWaterHeater, coordinator) -> None:
+        super().__init__(device, coordinator)
+        self._wh = device
+
+    @property
+    def name(self) -> str:
+        return "增压"
+
+    @property
+    def unique_id(self) -> str:
+        return f"{self._device.unique_id()}-boost"
+
+    @property
+    def is_on(self) -> bool:
+        return bool(self._wh.is_boost)
+
+    def turn_on(self, **kwargs: Any) -> None:
+        self._wh.set_boost(True)
+        self.schedule_update_ha_state()
+
+    def turn_off(self, **kwargs: Any) -> None:
+        self._wh.set_boost(False)
         self.schedule_update_ha_state()

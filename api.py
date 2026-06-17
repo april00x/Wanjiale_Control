@@ -154,16 +154,23 @@ class WanjialeDevice:
                 if not success:
                     _LOGGER.warning("局域网认证返回失败, 回退到云端控制")
                     return self._send_cloud_control(as_dict)
-            result = self._protocol.send_local_control(self.did, as_dict)
-            # LAN 响应含 as → 合并到现有状态并即时刷新（匹配 Java NIO 实时性）
-            if isinstance(result, dict) and isinstance(result.get("as"), dict) and result["as"]:
-                current_as = self.attributes.get("as", {})
-                if isinstance(current_as, dict):
-                    current_as.update(result["as"])
-                else:
-                    self.attributes["as"] = dict(result["as"])
-                self.refresh()
-            return result
+            self._protocol.send_local_control(self.did, as_dict)
+            # LAN fire-and-forget 后立即云端 query 获取真实状态
+            # 设备收到 LAN 命令后会通过云端推送 post（~0.7s 到达）
+            if getattr(self._protocol, "_socket", None):
+                try:
+                    result = self._protocol.query_device(self.did, timeout=2.5, accept_post=True)
+                    if isinstance(result, dict) and isinstance(result.get("as"), dict):
+                        current_as = self.attributes.get("as", {})
+                        if isinstance(current_as, dict):
+                            current_as.update(result["as"])
+                        else:
+                            self.attributes["as"] = dict(result["as"])
+                        self.refresh()
+                        return result
+                except Exception:
+                    pass
+            return {"status": "sent"}
         except Exception as exc:
             _LOGGER.warning("局域网控制失败 (%s), 回退到云端控制", exc)
             self._protocol.close_local()
@@ -327,7 +334,11 @@ class WanjialeWaterHeater(WanjialeDevice):
 
     def set_boost(self, on: bool) -> Dict[str, Any]:
         value = 16777216 + 2 * 65536 + 65535 if on else 2 * 65536 + 65535
-        return self._send_opt_pair(self.OP_BOOST, value)
+        result = self._send_opt_pair(self.OP_BOOST, value)
+        if isinstance(result, dict) and not result.get("error"):
+            self.is_boost = on
+            self._last_control_time = time.time()
+        return result
 
     def set_sterilize(self, on: bool) -> Dict[str, Any]:
         return self._send_opt(self.DVID_STERILIZE, 1 if on else 0)
