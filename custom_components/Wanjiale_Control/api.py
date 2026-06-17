@@ -463,7 +463,14 @@ class WanjialeApi:
         """刷新所有设备状态。
 
         LAN 用于控制 + 查询回退。云端长连接优先查询。
+        任何异常不得穿透此方法——coordinator 成功后实体仍可用。
         """
+        try:
+            self._refresh_all_impl()
+        except Exception:
+            _LOGGER.debug("refresh_all 异常", exc_info=True)
+
+    def _refresh_all_impl(self) -> None:
         if not self._devices:
             return
 
@@ -529,7 +536,7 @@ class WanjialeApi:
         """通过云端长连接查询设备状态。"""
         if not getattr(self._protocol, "_socket", None):
             return {"error": "no cloud socket"}
-        return self._protocol.query_device(dev.did, timeout=5)
+        return self._protocol.query_device(dev.did, timeout=3)
 
     async def async_refresh_all(self) -> None:
         """异步刷新（HA coordinator 调用）。"""
