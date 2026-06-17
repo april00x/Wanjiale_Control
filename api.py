@@ -154,8 +154,16 @@ class WanjialeDevice:
                 if not success:
                     _LOGGER.warning("局域网认证返回失败, 回退到云端控制")
                     return self._send_cloud_control(as_dict)
-            self._protocol.send_local_control(self.did, as_dict)
-            return {"status": "sent"}
+            result = self._protocol.send_local_control(self.did, as_dict)
+            # LAN 响应含 as → 合并到现有状态并即时刷新（匹配 Java NIO 实时性）
+            if isinstance(result, dict) and isinstance(result.get("as"), dict) and result["as"]:
+                current_as = self.attributes.get("as", {})
+                if isinstance(current_as, dict):
+                    current_as.update(result["as"])
+                else:
+                    self.attributes["as"] = dict(result["as"])
+                self.refresh()
+            return result
         except Exception as exc:
             _LOGGER.warning("局域网控制失败 (%s), 回退到云端控制", exc)
             self._protocol.close_local()

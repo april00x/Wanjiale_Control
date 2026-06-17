@@ -75,7 +75,11 @@ class WanjialePowerSwitch(WanjialeEntity, SwitchEntity):
     def __init__(self, device: WanjialeWaterHeater, coordinator) -> None:
         super().__init__(device, coordinator)
         self._wh = device
-        self._attr_name = f"{device.name} 待机"
+
+    @property
+    def name(self) -> str:
+        # return f"{self._device.name} 电源"
+        return f"电源"
 
     @property
     def unique_id(self) -> str:

@@ -846,10 +846,13 @@ class WanjialeProtocol:
 
     # ---- 局域网控制 ----
     def send_local_control(self, did: str, as_dict: Dict[str, Any]) -> Dict[str, Any]:
-        """通过局域网发送控制命令（发完即返，不等响应）。
+        """通过局域网发送控制命令并读取响应。
 
-        Java PostMessage.handle(bArr,bArr2) 直接 return true，
-        设备状态由长连接 post 推送 + 定期 query 刷新。
+        Java ConnectionManager 使用 NIO Selector 事件驱动：
+        send → Selector 唤醒 → 读响应帧 → MessageManager.b()
+        → PostMessage.onSuccess() → UI 即时更新（< 50ms）。
+
+        此处同步读取 LAN 响应（2s 超时），匹配 Java 的实时性。
         """
         if not self._local_socket or not self._local_lan_pin:
             raise RuntimeError("请先调用 connect_local()")
@@ -870,6 +873,25 @@ class WanjialeProtocol:
         _LOGGER.debug("sending local control to %s: %s", did, json_str)
         with self._local_lock:
             self._local_socket.sendall(frame)
+
+            start_time = time.time()
+            while time.time() - start_time < 2.0:
+                remaining = 2.0 - (time.time() - start_time)
+                self._local_socket.settimeout(max(remaining, 0.3))
+                try:
+                    raw = self._recv_local_frame()
+                    if raw is None:
+                        continue
+                    result = self._parse_business_response(raw, full_lan_pin)
+                    if isinstance(result, dict) and not result.get("error"):
+                        if result.get("as") or result.get("mid") == mid:
+                            return result
+                except socket.timeout:
+                    continue
+                except ConnectionError:
+                    raise
+                except Exception:
+                    continue
 
         return {"status": "sent", "mid": mid}
 

@@ -63,7 +63,7 @@ class WanjialeWaterHeaterEntity(WanjialeEntity, WaterHeaterEntity):
     )
     _attr_min_temp = MIN_TEMP
     _attr_max_temp = MAX_TEMP
-    _attr_target_temperature_step = 0.5
+    _attr_target_temperature_step = 1
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_operation_list = list(_MODE_MAP.values())
     _attr_icon = "mdi:water-boiler"
@@ -71,6 +71,10 @@ class WanjialeWaterHeaterEntity(WanjialeEntity, WaterHeaterEntity):
     def __init__(self, device, coordinator) -> None:
         super().__init__(device, coordinator)
         self._wh: WanjialeWaterHeater = device
+
+    @property
+    def name(self) -> str:
+        return "调温"
 
     # --------------------------------------------------------------
     # 状态

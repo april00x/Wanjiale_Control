@@ -68,7 +68,8 @@ class WanjialeTemperatureSensor(WanjialeEntity, SensorEntity):
 
     def __init__(self, device: WanjialeDevice, coordinator) -> None:
         super().__init__(device, coordinator)
-        self._attr_name = f"{device.name} 当前温度"
+        # self._attr_name = f"{device.name} 当前温度"
+        self._attr_name = f"当前设定温度"
 
     @property
     def unique_id(self) -> str:
