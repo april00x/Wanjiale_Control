@@ -1,7 +1,7 @@
 """万家乐集成的常量定义。"""
 from __future__ import annotations
 
-DOMAIN = "wanjiale"
+DOMAIN = "wanjiale_control"
 
 # config_entry / data 字段
 CONF_USERNAME = "username"

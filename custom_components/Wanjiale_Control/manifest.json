@@ -1,0 +1,12 @@
+{
+  "domain": "wanjiale_control",
+  "name": "Wanjiale Control",
+  "codeowners": ["@april00x"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/april00x/Wanjiale_Control",
+  "issue_tracker": "https://github.com/april00x/Wanjiale_Control/issues",
+  "iot_class": "cloud_polling",
+  "requirements": ["pycryptodome>=3.10", "requests>=2.25"],
+  "version": "0.1.2"
+}

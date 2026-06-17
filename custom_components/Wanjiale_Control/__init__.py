@@ -43,8 +43,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         except Exception:
             _LOGGER.warning("建立长连接失败，将无法获取设备实时状态和控制")
     except Exception as exc:  # noqa: BLE001
-        _LOGGER.exception("wanjiale 初始化失败")
-        raise ConfigEntryNotReady(f"wanjiale: {exc}") from exc
+        _LOGGER.exception("Wanjiale Control 初始化失败")
+        raise ConfigEntryNotReady(f"wanjiale_control: {exc}") from exc
 
     async def _do_refresh() -> WanjialeApi:
         """coordinator 的异步刷新逻辑。"""
