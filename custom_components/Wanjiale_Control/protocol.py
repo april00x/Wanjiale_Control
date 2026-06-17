@@ -815,21 +815,32 @@ class WanjialeProtocol:
 
     def _recv_local_frame(self) -> Optional[bytes]:
         """从局域网 socket 读取完整帧。"""
-        hdr = self._recv_local_exact(7)
-        if hdr[0] != 0xAA or hdr[1] != 0xBB:
+        try:
+            hdr = self._recv_local_exact(7)
+            if hdr[0] != 0xAA or hdr[1] != 0xBB:
+                return None
+            plaintext_len = hdr[3] & 0xFF
+            enc_len = _get_short(hdr, 5)
+            if enc_len > 65535:
+                return None
+            body = self._recv_local_exact(plaintext_len + enc_len)
+            return hdr + body
+        except (socket.timeout, ConnectionError):
             return None
-        plaintext_len = hdr[3] & 0xFF
-        enc_len = _get_short(hdr, 5)
-        body = self._recv_local_exact(plaintext_len + enc_len)
-        return hdr + body
 
     def _recv_local_exact(self, n: int) -> bytes:
         """从局域网 socket 读取精确 n 字节。"""
+        if n > 65535:
+            raise RuntimeError(f"_recv_local_exact: 请求读取 {n} 字节，超过最大允许值")
         data = b""
+        deadline = time.time() + max(n / 4096.0, 3.0)
         while len(data) < n:
+            self._local_socket.settimeout(max(deadline - time.time(), 0.1))
             chunk = self._local_socket.recv(n - len(data))
             if not chunk:
                 raise ConnectionError("局域网连接已关闭")
+            if time.time() > deadline:
+                raise socket.timeout(f"_recv_local_exact: 读取超时, 已读 {len(data)}/{n}")
             data += chunk
         return data
 
@@ -921,11 +932,17 @@ class WanjialeProtocol:
     # ---- 响应解析 ----
     def _recv_exact(self, n: int) -> bytes:
         """从长连接 socket 读取精确 n 字节的数据。"""
+        if n > 65535:
+            raise RuntimeError(f"_recv_exact: 请求读取 {n} 字节，超过最大允许值")
         data = b""
+        deadline = time.time() + max(n / 4096.0, 3.0)
         while len(data) < n:
+            self._socket.settimeout(max(deadline - time.time(), 0.1))
             chunk = self._socket.recv(n - len(data))
             if not chunk:
                 raise ConnectionError("长连接已关闭")
+            if time.time() > deadline:
+                raise socket.timeout(f"_recv_exact: 读取超时, 已读 {len(data)}/{n}")
             data += chunk
         return data
 
@@ -937,27 +954,31 @@ class WanjialeProtocol:
         """
         try:
             hdr = self._recv_exact(2)
+
+            if hdr[0] != 0xAA or hdr[1] != 0xBB:
+                return hdr
+
+            msg_type_byte = self._recv_exact(1)
+            msg_type = msg_type_byte[0] & 0xFF
+
+            # 心跳 AA BB 01
+            if msg_type == MSG_TYPE_HEARTBEAT:
+                return bytes([0xAA, 0xBB, MSG_TYPE_HEARTBEAT])
+
+            # 标准帧：剩余 4 字节头部
+            rest_hdr = self._recv_exact(4)
+            header = hdr + msg_type_byte + rest_hdr
+            extra_len = header[3] & 0xFF
+            enc_len = _get_short(header, 5)
+            if enc_len > 65535:
+                raise RuntimeError(f"_recv_frame: enc_len={enc_len} 异常")
+
+            body = self._recv_exact(extra_len + enc_len)
+            return header + body
         except (socket.timeout, ConnectionError):
             return None
-
-        if hdr[0] != 0xAA or hdr[1] != 0xBB:
-            return hdr
-
-        msg_type_byte = self._recv_exact(1)
-        msg_type = msg_type_byte[0] & 0xFF
-
-        # 心跳 AA BB 01
-        if msg_type == MSG_TYPE_HEARTBEAT:
-            return bytes([0xAA, 0xBB, MSG_TYPE_HEARTBEAT])
-
-        # 标准帧：剩余 4 字节头部
-        rest_hdr = self._recv_exact(4)
-        header = hdr + msg_type_byte + rest_hdr
-        extra_len = header[3] & 0xFF
-        enc_len = _get_short(header, 5)
-
-        body = self._recv_exact(extra_len + enc_len)
-        return header + body
+        except RuntimeError:
+            return None
 
     def _parse_business_response(self, raw: bytes, encrypt_key: str) -> Dict[str, Any]:
         """解析业务消息响应。
