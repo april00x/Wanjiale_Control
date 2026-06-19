@@ -669,7 +669,7 @@ class WanjialeProtocol:
 
     # ---- 云端控制 ----
     def send_control(self, did: str, as_dict: Dict[str, Any], timeout: Optional[float] = None) -> Dict[str, Any]:
-        """通过云端发送控制命令。"""
+        """通过云端发送控制命令（同步等待响应）。"""
         if timeout is None:
             timeout = self.timeout
 
@@ -716,6 +716,35 @@ class WanjialeProtocol:
                     continue
 
         raise TimeoutError(f"send_control 超时: mid={mid}")
+
+    def send_control_async(self, did: str, as_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """通过云端发送控制命令（fire-and-forget，不等待响应）。
+
+        对应原始 App 的 SendAction → ViewAdapter.b() → PostMessage 入队后立即返回。
+        状态确认由定时轮询的 coordinator 完成，与 App 的 onSuccess 回调模式一致。
+        """
+        mid = str(int(time.time() * 1000))
+        json_obj = {
+            "to": did,
+            "cmd": "opt",
+            "mid": mid,
+            "as": as_dict,
+        }
+        json_str = json.dumps(json_obj, separators=(",", ":"))
+
+        serial = self._next_serial()
+        frame = build_business_packet(serial, json_str, self._password_md5)
+
+        _LOGGER.debug("sending control async to %s: %s", did, json_str)
+
+        with self._lock:
+            self._ensure_connected()
+            if not self._socket:
+                raise RuntimeError("send_control_async: 无可用长连接")
+            self._socket.sendall(frame)
+            self._last_heartbeat = time.time()
+
+        return {"status": "sent", "mid": mid}
 
     # ---- UDP 局域网设备发现 ----
     def discover_device(self, timeout: float = 3.0) -> Optional[str]:

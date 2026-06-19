@@ -102,9 +102,11 @@ class WanjialeDevice:
         # 状态缓存
         self.attributes: Dict[str, Any] = dict(raw_device)
 
+        # 最后确认在线时间（云端或局域网查询成功时更新）
+        self._last_seen_online: float = time.time() if self.online else 0.0
+
     def refresh(self) -> None:
         """刷新设备状态。"""
-        self.online = bool(self._raw.get("online"))
         self.attributes.update(self._raw)
 
     def unique_id(self) -> str:
@@ -140,9 +142,9 @@ class WanjialeDevice:
                 _LOGGER.debug("建立长连接失败, 云控制不可用")
                 return {"error": "cloud unavailable"}
         try:
-            return self._protocol.send_control(self.did, as_dict)
+            return self._protocol.send_control_async(self.did, as_dict)
         except Exception:
-            _LOGGER.debug("send_control 失败")
+            _LOGGER.debug("send_control_async 失败")
             return {"error": "send failed"}
 
     def _send_lan_control(self, as_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -155,21 +157,7 @@ class WanjialeDevice:
                     _LOGGER.warning("局域网认证返回失败, 回退到云端控制")
                     return self._send_cloud_control(as_dict)
             self._protocol.send_local_control(self.did, as_dict)
-            # LAN fire-and-forget 后立即云端 query 获取真实状态
-            # 设备收到 LAN 命令后会通过云端推送 post（~0.7s 到达）
-            if getattr(self._protocol, "_socket", None):
-                try:
-                    result = self._protocol.query_device(self.did, timeout=2.5, accept_post=True)
-                    if isinstance(result, dict) and isinstance(result.get("as"), dict):
-                        current_as = self.attributes.get("as", {})
-                        if isinstance(current_as, dict):
-                            current_as.update(result["as"])
-                        else:
-                            self.attributes["as"] = dict(result["as"])
-                        self.refresh()
-                        return result
-                except Exception:
-                    pass
+            self._last_seen_online = time.time()
             return {"status": "sent"}
         except Exception as exc:
             _LOGGER.warning("局域网控制失败 (%s), 回退到云端控制", exc)
@@ -242,7 +230,7 @@ class WanjialeWaterHeater(WanjialeDevice):
     is_instant_heat: Optional[bool] = None
 
     _last_control_time: float = 0.0
-    CONTROL_COOLDOWN = 5.0
+    CONTROL_COOLDOWN = 1.5
 
     MIN_TEMP = 30
     MAX_TEMP = 60
@@ -298,6 +286,7 @@ class WanjialeWaterHeater(WanjialeDevice):
         if isinstance(result, dict) and not result.get("error"):
             self.is_power_on = on
             self._last_control_time = time.time()
+            self._last_seen_online = time.time()
         return result
 
     def set_temperature(self, temperature: int) -> Dict[str, Any]:
@@ -311,6 +300,7 @@ class WanjialeWaterHeater(WanjialeDevice):
         if isinstance(result, dict) and not result.get("error"):
             self.target_temperature = temp
             self._last_control_time = time.time()
+            self._last_seen_online = time.time()
         return result
 
     def set_mode(self, mode: int) -> Dict[str, Any]:
@@ -508,6 +498,7 @@ class WanjialeApi:
             if isinstance(as_data, dict) and as_data:
                 dev._raw["as"] = as_data
                 dev.attributes["as"] = as_data
+                dev._last_seen_online = time.time()
                 dev.refresh()
                 _LOGGER.info(
                     "设备状态更新: %s power=%s temp=%s mode=%s",
@@ -549,13 +540,28 @@ class WanjialeApi:
 
     def _apply_device_list(self, raw_list: List[Dict[str, Any]]) -> None:
         did_to_device = {dev.did: dev for dev in self._devices}
+        now = time.time()
         for raw in raw_list:
             did = str(raw.get("did") or "")
             dev = did_to_device.get(did)
             if dev is not None:
                 dev._raw = raw
                 dev.name = str(raw.get("name") or dev.name)
-                dev.online = bool(raw.get("online"))
+                cloud_online = bool(raw.get("online"))
+                if not cloud_online and dev.is_lan_available() and dev._last_seen_online > 0:
+                    if now - dev._last_seen_online < 120:
+                        dev.online = True
+                        _LOGGER.debug(
+                            "云端报告设备离线但 LAN 可用, 保持在线: %s (%.0fs前确认在线)",
+                            dev.name, now - dev._last_seen_online,
+                        )
+                    else:
+                        dev.online = False
+                        _LOGGER.info("设备 %s 超时未确认在线, 标记离线", dev.name)
+                elif not cloud_online and dev.is_lan_available():
+                    dev.online = True
+                else:
+                    dev.online = cloud_online
                 dev.model = str(raw.get("model") or dev.model)
                 dev.refresh()
             else:
