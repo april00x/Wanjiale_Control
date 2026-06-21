@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Type
 
@@ -159,14 +160,27 @@ class WanjialeDevice:
             self._protocol.send_local_control(self.did, as_dict)
             self._last_seen_online = time.time()
             return {"status": "sent"}
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+            _LOGGER.debug("LAN socket 断开, 重连重试")
+            self._protocol.close_local()
+            try:
+                success = self._protocol.connect_local(
+                    self.local_host, self.local_port, self.lan_pin,
+                )
+                if not success:
+                    _LOGGER.warning("LAN 重连失败, 回退到云端控制")
+                    return self._send_cloud_control(as_dict)
+                self._protocol.send_local_control(self.did, as_dict)
+                self._last_seen_online = time.time()
+                return {"status": "sent"}
+            except Exception:
+                _LOGGER.warning("LAN 重试失败, 回退到云端控制")
+                self._protocol.close_local()
+                return self._send_cloud_control(as_dict)
         except Exception as exc:
             _LOGGER.warning("局域网控制失败 (%s), 回退到云端控制", exc)
             self._protocol.close_local()
-            try:
-                return self._send_cloud_control(as_dict)
-            except Exception:
-                _LOGGER.debug("云控制回退也失败")
-                return {"error": str(exc)}
+            return self._send_cloud_control(as_dict)
 
     def turn_on(self) -> None:
         raise NotImplementedError
@@ -398,6 +412,8 @@ class WanjialeApi:
     def __init__(self, protocol: WanjialeProtocol) -> None:
         self._protocol = protocol
         self._devices: List[WanjialeDevice] = []
+        self._last_device_list_refresh: float = 0.0
+        self._bg_device_list_interval: float = 300.0
 
     @property
     def devices(self) -> List[WanjialeDevice]:
@@ -460,6 +476,30 @@ class WanjialeApi:
         except Exception:
             _LOGGER.debug("refresh_all 异常", exc_info=True)
 
+    def _try_refresh_device_list(self) -> None:
+        """后台线程：HTTP 拉设备列表（不阻塞主 poll 流程）。
+
+        HTTP get_devices 使用独立的短超时(3s)，失败不影响设备状态查询。
+        每 _bg_device_list_interval 秒最多执行一次。
+        与主线程并发写入 dev 属性是安全的——CPython GIL 保证单条赋值原子性，
+        且 dict.update 碰撞概率极低（300s 间隔 vs 3s HTTP），即使碰撞也会在下轮自愈。
+        """
+        now = time.time()
+        if now - self._last_device_list_refresh < self._bg_device_list_interval:
+            return
+        self._last_device_list_refresh = now
+
+        try:
+            raw_list = self._protocol.get_devices()
+        except Exception as e:
+            _LOGGER.debug("HTTP 刷新设备列表失败: %s", e)
+            return
+
+        try:
+            self._apply_device_list(raw_list)
+        except Exception:
+            _LOGGER.debug("_apply_device_list 异常", exc_info=True)
+
     def _refresh_all_impl(self) -> None:
         if not self._devices:
             return
@@ -467,11 +507,7 @@ class WanjialeApi:
         if not any(dev.local_host for dev in self._devices):
             self._discover_lan()
 
-        try:
-            raw_list = self._protocol.get_devices()
-            self._apply_device_list(raw_list)
-        except Exception:
-            _LOGGER.debug("HTTP 刷新设备列表失败")
+        threading.Thread(target=self._try_refresh_device_list, daemon=True).start()
 
         for dev in self._devices:
             if not dev.online:

@@ -1,6 +1,7 @@
 """万家乐设备实体的公共基类 / 辅助函数。"""
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Dict, Optional, cast
 
 from homeassistant.helpers.entity import DeviceInfo
@@ -62,3 +63,17 @@ class WanjialeEntity(CoordinatorEntity):
     def api(self) -> WanjialeApi:
         # coordinator.data 即 WanjialeApi 实例
         return cast(WanjialeApi, self.coordinator.data)
+
+    def _request_refresh_soon(self) -> None:
+        """2 秒后在事件循环上触发 coordinator 刷新。
+
+        控制命令已通过 fire-and-forget 发出，乐观更新已让 UI 立即显示预期值。
+        2 秒后提前触发一次刷新，在定时轮询到来之前拉取设备真实状态。
+        使用 call_soon_threadsafe 从 executor 线程安全投递到事件循环。
+        """
+        async def _do_refresh():
+            await asyncio.sleep(2.0)
+            await self.coordinator.async_request_refresh()
+        self.hass.loop.call_soon_threadsafe(
+            lambda: self.hass.async_create_task(_do_refresh())
+        )

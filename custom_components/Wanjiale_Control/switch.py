@@ -93,10 +93,12 @@ class WanjialePowerSwitch(WanjialeEntity, SwitchEntity):
     def turn_on(self, **kwargs: Any) -> None:
         self._wh.turn_on()
         self.schedule_update_ha_state()
+        self._request_refresh_soon()
 
     def turn_off(self, **kwargs: Any) -> None:
         self._wh.turn_off()
         self.schedule_update_ha_state()
+        self._request_refresh_soon()
 
 
 class WanjialeBoostSwitch(WanjialeEntity, SwitchEntity):
@@ -129,7 +131,9 @@ class WanjialeBoostSwitch(WanjialeEntity, SwitchEntity):
     def turn_on(self, **kwargs: Any) -> None:
         self._wh.set_boost(True)
         self.schedule_update_ha_state()
+        self._request_refresh_soon()
 
     def turn_off(self, **kwargs: Any) -> None:
         self._wh.set_boost(False)
         self.schedule_update_ha_state()
+        self._request_refresh_soon()

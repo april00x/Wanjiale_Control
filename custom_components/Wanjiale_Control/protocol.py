@@ -487,6 +487,7 @@ class WanjialeProtocol:
         port: int = SERVER_PORT,
         timeout: float = 10.0,
         http_base_url: str = HTTP_BASE_URL,
+        http_timeout: float = 3.0,
     ) -> None:
         self.username = username
         self.password = password
@@ -496,6 +497,7 @@ class WanjialeProtocol:
         self.port = port
         self.timeout = timeout
         self.http_base_url = http_base_url
+        self.http_timeout = http_timeout
 
         # 登录结果
         self.uid: Optional[str] = None
@@ -513,6 +515,11 @@ class WanjialeProtocol:
         self._heartbeat_interval = 40
         self._lock = threading.RLock()
         self._local_lock = threading.RLock()
+
+        # LAN 心跳（防止设备端空闲关闭连接，对应 App ConnectionManager.J() 的 HeartMessage）
+        self._lan_heartbeat_interval: float = 40.0
+        self._lan_stop_event = threading.Event()
+        self._lan_heartbeat_thread: Optional[threading.Thread] = None
 
     def _next_serial(self) -> int:
         """获取下一个序列号。"""
@@ -567,9 +574,18 @@ class WanjialeProtocol:
             raise RuntimeError("requests 未安装") from e
 
         url = f"{self.http_base_url}/app/devices"
-        resp = requests.get(url, headers=build_auth_headers(self.uid, self.api_key), timeout=self.timeout)
-        resp.raise_for_status()
-        data = resp.json()
+        resp = None
+        try:
+            resp = requests.get(url, headers=build_auth_headers(self.uid, self.api_key), timeout=self.http_timeout)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception:
+            _LOGGER.debug(
+                "HTTP get_devices 失败: status=%s body=%s",
+                getattr(resp, "status_code", None) if resp is not None else "N/A",
+                (getattr(resp, "text", "")[:200]) if resp is not None else "N/A",
+            )
+            raise
         if "devs" in data:
             devs: list[Dict[str, Any]] = data["devs"]
             _LOGGER.info("got %d devices", len(devs))
@@ -834,6 +850,7 @@ class WanjialeProtocol:
             if success:
                 self._local_lan_pin = lan_pin
                 _LOGGER.info("local device authentication success")
+                self._start_lan_heartbeat()
             else:
                 _LOGGER.debug("local auth raw hex: %s", raw.hex() if raw else "None")
                 self._local_socket.close()
@@ -875,6 +892,7 @@ class WanjialeProtocol:
 
     def close_local(self) -> None:
         """关闭局域网连接。"""
+        self._lan_stop_event.set()
         with self._local_lock:
             if self._local_socket:
                 try:
@@ -883,6 +901,46 @@ class WanjialeProtocol:
                     pass
                 self._local_socket = None
                 self._local_lan_pin = None
+        if self._lan_heartbeat_thread is not None and self._lan_heartbeat_thread.is_alive():
+            self._lan_heartbeat_thread.join(timeout=2.0)
+        self._lan_heartbeat_thread = None
+        self._lan_stop_event.clear()
+
+    def _start_lan_heartbeat(self) -> None:
+        """启动 LAN 心跳守护线程。
+
+        对应 App: ConnectionManager.J() 通过 NIO Selector isWritable 事件触发 HeartMessage 发送。
+        设备端嵌入式 TCP 空闲超时通常 15-60s，心跳每 40s 发一次 AA BB 01 保持连接活跃。
+        """
+        if self._lan_heartbeat_thread is not None and self._lan_heartbeat_thread.is_alive():
+            return
+        self._lan_stop_event.clear()
+        self._lan_heartbeat_thread = threading.Thread(
+            target=self._lan_heartbeat_loop, daemon=True, name="wanjiale-lan-hb",
+        )
+        self._lan_heartbeat_thread.start()
+
+    def _lan_heartbeat_loop(self) -> None:
+        """LAN 心跳循环：每 _lan_heartbeat_interval 秒发 AA BB 01。
+
+        close_local() 通过 _lan_stop_event.set() 通知退出。
+        心跳失败（BrokenPipe/ConnectionReset）时自动清理 socket 并退出。
+        """
+        while not self._lan_stop_event.wait(self._lan_heartbeat_interval):
+            with self._local_lock:
+                if self._local_socket is None:
+                    return
+                try:
+                    self._local_socket.sendall(b"\xAA\xBB\x01")
+                except Exception:
+                    _LOGGER.debug("LAN 心跳失败, 关闭本地连接")
+                    try:
+                        self._local_socket.close()
+                    except Exception:
+                        pass
+                    self._local_socket = None
+                    self._local_lan_pin = None
+                    return
 
     # ---- 局域网控制 ----
     def send_local_control(self, did: str, as_dict: Dict[str, Any]) -> Dict[str, Any]:

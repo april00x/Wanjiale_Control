@@ -103,10 +103,12 @@ class WanjialeWaterHeaterEntity(WanjialeEntity, WaterHeaterEntity):
     def turn_on(self, **kwargs: Any) -> None:
         self._wh.turn_on()
         self.schedule_update_ha_state()
+        self._request_refresh_soon()
 
     def turn_off(self, **kwargs: Any) -> None:
         self._wh.turn_off()
         self.schedule_update_ha_state()
+        self._request_refresh_soon()
 
     def set_temperature(self, **kwargs: Any) -> None:
         temp = kwargs.get("temperature")
@@ -114,6 +116,7 @@ class WanjialeWaterHeaterEntity(WanjialeEntity, WaterHeaterEntity):
             return
         self._wh.set_temperature(int(float(temp)))
         self.schedule_update_ha_state()
+        self._request_refresh_soon()
 
     def set_operation_mode(self, operation_mode: str) -> None:
         internal = None
@@ -125,3 +128,4 @@ class WanjialeWaterHeaterEntity(WanjialeEntity, WaterHeaterEntity):
             return
         self._wh.set_mode(internal)
         self.schedule_update_ha_state()
+        self._request_refresh_soon()
