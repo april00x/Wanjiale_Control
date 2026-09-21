@@ -1,4 +1,10 @@
-"""万家乐热水器实体平台。"""
+"""万家乐燃气热水器主实体（water_heater 平台）。
+
+承载最核心的三件事：开关机、设定温度、模式切换。
+- 温度：对外一律暴露显示温度；随温感模式下内部按 +3-环境修正 反算原始值下发。
+- 模式：模式列表来自「机型模板 ∪ 实机上报」，不写死。
+- 其余零冷水 / 增压 / 保温等能力拆到 switch / number / select / button 平台。
+"""
 from __future__ import annotations
 
 import logging
@@ -11,24 +17,14 @@ from homeassistant.components.water_heater import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from ._entity import WanjialeEntity
-from .api import WanjialeApi, WanjialeWaterHeater
+from ._entity import WanjialeDiagnosticEntity
+from .api import WanjialeApi, WanjialeGasWaterHeater
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
-
-MIN_TEMP = 30.0
-MAX_TEMP = 60.0
-
-_MODE_MAP = {
-    WanjialeWaterHeater.MODE_COMFORT: "舒适浴",
-    WanjialeWaterHeater.MODE_SMART: "随温感",
-    WanjialeWaterHeater.MODE_KITCHEN: "厨房洗",
-    WanjialeWaterHeater.MODE_ECO: "ECO",
-    WanjialeWaterHeater.MODE_SUR: "SUR",
-}
 
 
 async def async_setup_entry(
@@ -40,92 +36,104 @@ async def async_setup_entry(
     api: WanjialeApi = entry_data["api"]
     coordinator = entry_data["coordinator"]
 
-    devices: List[Any] = [
+    entities = [
         WanjialeWaterHeaterEntity(dev, coordinator)
         for dev in api.devices
-        if isinstance(dev, WanjialeWaterHeater)
+        if isinstance(dev, WanjialeGasWaterHeater) and dev.has_feature("开关机")
     ]
-    _LOGGER.info("创建 %d 个热水器实体: %s", len(devices), [d.name for d in devices])
-    async_add_entities(devices, True)
+    _LOGGER.info("创建 %d 个热水器主实体", len(entities))
+    async_add_entities(entities, True)
 
 
-class WanjialeWaterHeaterEntity(WanjialeEntity, WaterHeaterEntity):
-    """热水器实体。
+class WanjialeWaterHeaterEntity(WanjialeDiagnosticEntity, WaterHeaterEntity):
+    """热水器主实体。"""
 
-    控制方法使用同步签名，HA 会自动包装到 executor 线程，
-    这样底层的同步 socket 不会阻塞事件循环。
-    """
-
-    _attr_supported_features = (
-        WaterHeaterEntityFeature.TARGET_TEMPERATURE
-        | WaterHeaterEntityFeature.OPERATION_MODE
-        | WaterHeaterEntityFeature.ON_OFF
-    )
-    _attr_min_temp = MIN_TEMP
-    _attr_max_temp = MAX_TEMP
-    _attr_target_temperature_step = 1
+    _entity_key = "water_heater"
+    # 主实体直接使用设备名（has_entity_name 组合后即设备名本身）
+    _attr_name = None
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
-    _attr_operation_list = list(_MODE_MAP.values())
+    _attr_target_temperature_step = 1
     _attr_icon = "mdi:water-boiler"
 
-    def __init__(self, device, coordinator) -> None:
+    def __init__(self, device: WanjialeGasWaterHeater, coordinator) -> None:
         super().__init__(device, coordinator)
-        self._wh: WanjialeWaterHeater = device
+        self._wh: WanjialeGasWaterHeater = device
+
+    # ------------------------------------------------------------------
+    # 能力
+    # ------------------------------------------------------------------
+    @property
+    def supported_features(self) -> WaterHeaterEntityFeature:
+        features = (
+            WaterHeaterEntityFeature.ON_OFF
+            | WaterHeaterEntityFeature.TARGET_TEMPERATURE
+        )
+        if self._wh.has_feature("模式切换"):
+            features |= WaterHeaterEntityFeature.OPERATION_MODE
+        return features
 
     @property
-    def name(self) -> str:
-        return "调温"
+    def operation_list(self) -> List[str]:
+        modes = self._wh.mode_names()
+        # 按模式号排序，并去重（同名的模式只保留一个）
+        names: List[str] = []
+        for mode_id in sorted(modes):
+            name = modes[mode_id]
+            if name not in names:
+                names.append(name)
+        return names
 
-    # --------------------------------------------------------------
+    # ------------------------------------------------------------------
     # 状态
-    # --------------------------------------------------------------
+    # ------------------------------------------------------------------
     @property
     def is_on(self) -> Optional[bool]:
         return self._wh.is_power_on
 
     @property
     def current_temperature(self) -> Optional[float]:
+        """当前水温（dvid18）。"""
         return self._wh.current_temperature
 
     @property
     def target_temperature(self) -> Optional[float]:
+        """设定温度（对外显示值）。"""
         return self._wh.target_temperature
 
     @property
     def current_operation(self) -> Optional[str]:
-        if not self._wh.current_mode:
+        mode = self._wh.current_mode
+        if mode is None:
             return None
-        return _MODE_MAP.get(self._wh.current_mode)
+        return self._wh.mode_names().get(mode)
 
-    # --------------------------------------------------------------
-    # 控制（同步方法 -> HA 自动包装到 executor）
-    # --------------------------------------------------------------
+    @property
+    def min_temp(self) -> float:
+        return float(self._wh.min_temp())
+
+    @property
+    def max_temp(self) -> float:
+        # 随模式变化：随温感 = 环境修正+45 对应显示值，ECO = 48℃，其余 60℃
+        return float(self._wh.max_temp())
+
+    # ------------------------------------------------------------------
+    # 控制（同步方法，HA 自动放到 executor 线程执行）
+    # ------------------------------------------------------------------
     def turn_on(self, **kwargs: Any) -> None:
-        self._wh.turn_on()
-        self.schedule_update_ha_state()
-        self._request_refresh_soon()
+        self._control(self._wh.turn_on)
 
     def turn_off(self, **kwargs: Any) -> None:
-        self._wh.turn_off()
-        self.schedule_update_ha_state()
-        self._request_refresh_soon()
+        self._control(self._wh.turn_off)
 
     def set_temperature(self, **kwargs: Any) -> None:
-        temp = kwargs.get("temperature")
-        if temp is None:
+        temperature = kwargs.get("temperature")
+        if temperature is None:
             return
-        self._wh.set_temperature(int(float(temp)))
-        self.schedule_update_ha_state()
-        self._request_refresh_soon()
+        self._control(self._wh.set_temperature, int(round(float(temperature))))
 
     def set_operation_mode(self, operation_mode: str) -> None:
-        internal = None
-        for k, v in _MODE_MAP.items():
-            if v == operation_mode:
-                internal = k
-                break
-        if internal is None:
-            return
-        self._wh.set_mode(internal)
-        self.schedule_update_ha_state()
-        self._request_refresh_soon()
+        for mode_id, name in self._wh.mode_names().items():
+            if name == operation_mode:
+                self._control(self._wh.set_mode, mode_id)
+                return
+        raise HomeAssistantError(f"未知模式：{operation_mode}")

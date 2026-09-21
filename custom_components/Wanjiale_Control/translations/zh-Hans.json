@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "万家乐账号",
-        "description": "请输入万家乐 APP 账号密码（通过 machtalk 云端登录）。",
+        "description": "请输入万家乐应用账号密码（通过 machtalk 云端登录）。",
         "data": {
           "username": "账号",
           "password": "密码",
@@ -18,6 +18,24 @@
     },
     "abort": {
       "already_configured": "该账号已在 Home Assistant 中配置"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "万家乐 高级选项",
+        "description": "机型模板描述的是模板能力，与实机能力可能不一致（例如模板含零冷水点位、实机功能位未置起）。探测不到的功能可在此强制开启，误判的功能可强制关闭。保存后集成会自动重载。",
+        "data": {
+          "enable_control_rights": "启用多端操作权抢占（默认关闭）",
+          "feature_force_on": "强制开启的功能",
+          "feature_force_off": "强制关闭的功能"
+        },
+        "data_description": {
+          "enable_control_rights": "开启后，每次控制前会先用登录手机号抢占设备操作权（对应官方应用的多端互斥机制）。若你的机型不校验操作权，保持关闭即可。",
+          "feature_force_on": "即使未探测到，也为其创建实体。",
+          "feature_force_off": "即使机型模板声明支持，也不创建实体（用于消除误判或不需要的功能）。"
+        }
+      }
     }
   }
 }

@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Wanjiale Account",
-        "description": "Enter your Wanjiale APP credentials (used to login to the machtalk cloud).",
+        "description": "Enter your Wanjiale app credentials (used to login to the machtalk cloud).",
         "data": {
           "username": "Username",
           "password": "Password",
@@ -18,6 +18,24 @@
     },
     "abort": {
       "already_configured": "This account is already configured in Home Assistant"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Wanjiale Advanced Options",
+        "description": "A model template describes the template capability, which may differ from the real device (e.g. the template exposes zero-cold-water points while the device never raises the feature bit). Force-enable a feature that was not detected, or force-disable a mis-detected one. The integration reloads automatically after saving.",
+        "data": {
+          "enable_control_rights": "Enable multi-client control-rights preemption (off by default)",
+          "feature_force_on": "Force-enabled features",
+          "feature_force_off": "Force-disabled features"
+        },
+        "data_description": {
+          "enable_control_rights": "When enabled, the login phone number is used to claim the device control right before each command (mirrors the official app's multi-client exclusion). Keep it off if your model does not check control rights.",
+          "feature_force_on": "Create entities for these features even if they were not detected.",
+          "feature_force_off": "Never create entities for these features, even if the model template declares support."
+        }
+      }
     }
   }
 }

@@ -1,7 +1,15 @@
-"""万家乐开关平台。"""
+"""万家乐开关型功能实体（switch 平台）。
+
+以下功能都是「按一下开/关」，全部是 dvid1 + dvid2 复合命令：
+  零冷水/即热(dvid1=14)、增压(7)、全天循环(27)、UV杀菌(6)、巡航杀菌(dvid251)、
+  预约(15)、冷气泡水(29)。
+每个功能是否创建，由 capabilities 解析出的设备功能集合决定。
+"""
 from __future__ import annotations
 
-from typing import Any, List
+import logging
+from dataclasses import dataclass
+from typing import Any, List, Optional
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
@@ -9,14 +17,35 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from ._entity import WanjialeEntity
-from .api import (
-    WanjialeApi,
-    WanjialeDevice,
-    WanjialeDisinfect,
-    WanjialeStove,
-    WanjialeWaterHeater,
-)
+from .api import WanjialeApi, WanjialeGasWaterHeater
 from .const import DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class SwitchSpec:
+    """一个开关功能到设备能力的映射。"""
+
+    feature: str            # 能力名（与 features_001.FEATURES 对应）
+    key: str                # unique_id 短键
+    name: str               # 实体名
+    icon: str
+    method: str             # WanjialeGasWaterHeater 上的控制方法名
+    state_key: Optional[str] = None   # parsed 中的状态键；None 表示状态不可靠
+    assumed: bool = False   # 状态位未经验证时置 True，UI 显示为可切换按钮
+
+
+# 状态位定义见 features_001 的位域部分；冷气泡水状态位不可靠，不做状态判断
+_SPECS: tuple[SwitchSpec, ...] = (
+    SwitchSpec("零冷水/即热", "instant_heat", "零冷水/即热", "mdi:water-sync", "set_instant_heat", "instant_heat_on"),
+    SwitchSpec("增压", "boost", "增压", "mdi:water-pump", "set_boost", "boost_on"),
+    SwitchSpec("全天循环", "all_day", "全天循环", "mdi:calendar-clock", "set_all_day", "all_day"),
+    SwitchSpec("UV杀菌", "uv", "UV杀菌", "mdi:lightbulb-on-outline", "set_uv", "uv_on"),
+    SwitchSpec("巡航杀菌", "sterilize", "巡航杀菌", "mdi:shield-sun-outline", "set_sterilize", "sterilizing"),
+    SwitchSpec("预约", "reserve", "预约", "mdi:calendar-check-outline", "set_reserve", "reserve_on"),
+    SwitchSpec("冷气泡水", "sparkling", "冷气泡水", "mdi:soda-water", "set_sparkling", None, True),
+)
 
 
 async def async_setup_entry(
@@ -28,112 +57,48 @@ async def async_setup_entry(
     api: WanjialeApi = entry_data["api"]
     coordinator = entry_data["coordinator"]
 
-    devices: List[Any] = [
-        WanjialeSwitchEntity(dev, coordinator)
-        for dev in api.devices
-        if isinstance(dev, (WanjialeStove, WanjialeDisinfect))
-    ]
-    # 热水器待机开关 + 增压开关
+    entities: List[WanjialeFeatureSwitch] = []
     for dev in api.devices:
-        if isinstance(dev, WanjialeWaterHeater):
-            devices.append(WanjialePowerSwitch(dev, coordinator))
-            devices.append(WanjialeBoostSwitch(dev, coordinator))
-    async_add_entities(devices, True)
+        if not isinstance(dev, WanjialeGasWaterHeater):
+            continue
+        for spec in _SPECS:
+            if dev.has_feature(spec.feature):
+                entities.append(WanjialeFeatureSwitch(dev, coordinator, spec))
+    _LOGGER.info("创建 %d 个功能开关实体", len(entities))
+    async_add_entities(entities, True)
 
 
-class WanjialeSwitchEntity(WanjialeEntity, SwitchEntity):
-    """通用开关实体（灶具/消毒柜）。"""
+class WanjialeFeatureSwitch(WanjialeEntity, SwitchEntity):
+    """由 SwitchSpec 驱动的通用功能开关。"""
 
-    def __init__(self, device: WanjialeDevice, coordinator) -> None:
-        super().__init__(device, coordinator)
-        self._attr_name = f"{device.name} 开关"
-
-    @property
-    def unique_id(self) -> str:
-        return f"{self._device.unique_id()}-switch"
-
-    @property
-    def is_on(self) -> bool:
-        return bool(getattr(self._device, "is_power_on", False))
-
-    def turn_on(self, **kwargs: Any) -> None:
-        self._device.turn_on()
-
-    def turn_off(self, **kwargs: Any) -> None:
-        self._device.turn_off()
-
-
-class WanjialePowerSwitch(WanjialeEntity, SwitchEntity):
-    """热水器待机开关。
-
-    对应 Java PostMessage dvid="4" + opt 消息。
-    dwtype=2 开关型：0=关机, 1=开机。
-    """
-
-    _wh: WanjialeWaterHeater
-    _attr_icon = "mdi:power"
-
-    def __init__(self, device: WanjialeWaterHeater, coordinator) -> None:
+    def __init__(self, device: WanjialeGasWaterHeater, coordinator, spec: SwitchSpec) -> None:
         super().__init__(device, coordinator)
         self._wh = device
+        self._spec = spec
+        self._entity_key = spec.key
+        self._attr_name = spec.name
+        self._attr_icon = spec.icon
+        self._attr_assumed_state = spec.assumed
+        # 设备未上报该状态位时的兜底值（由最近一次控制结果决定）
+        self._local_state: Optional[bool] = None
 
     @property
-    def name(self) -> str:
-        # return f"{self._device.name} 电源"
-        return f"电源"
-
-    @property
-    def unique_id(self) -> str:
-        return f"{self._device.unique_id()}-power"
-
-    @property
-    def is_on(self) -> bool:
-        return bool(self._wh.is_power_on)
+    def is_on(self) -> Optional[bool]:
+        if self._spec.state_key:
+            value = self._wh.parsed.get(self._spec.state_key)
+            if value is not None:
+                return bool(value)
+        return self._local_state
 
     def turn_on(self, **kwargs: Any) -> None:
-        self._wh.turn_on()
-        self.schedule_update_ha_state()
-        self._request_refresh_soon()
+        self._control(self._apply, True)
 
     def turn_off(self, **kwargs: Any) -> None:
-        self._wh.turn_off()
-        self.schedule_update_ha_state()
-        self._request_refresh_soon()
+        self._control(self._apply, False)
 
-
-class WanjialeBoostSwitch(WanjialeEntity, SwitchEntity):
-    """热水器增压开关。
-
-    对应 Java PostMessage dvid="1"=7 (OP_BOOST) + 编码值。
-    dwtype=2 开关型：0=关, 1=开。
-    状态读取 DVID "20" bit0-1。
-    """
-
-    _wh: WanjialeWaterHeater
-    _attr_icon = "mdi:water-pump"
-
-    def __init__(self, device: WanjialeWaterHeater, coordinator) -> None:
-        super().__init__(device, coordinator)
-        self._wh = device
-
-    @property
-    def name(self) -> str:
-        return "增压"
-
-    @property
-    def unique_id(self) -> str:
-        return f"{self._device.unique_id()}-boost"
-
-    @property
-    def is_on(self) -> bool:
-        return bool(self._wh.is_boost)
-
-    def turn_on(self, **kwargs: Any) -> None:
-        self._wh.set_boost(True)
-        self.schedule_update_ha_state()
-        self._request_refresh_soon()
-
-    def turn_off(self, **kwargs: Any) -> None:
-        self._wh.set_boost(False)
-        self.schedule_update_ha_state()
-        self._request_refresh_soon()
+    def _apply(self, on: bool) -> None:
+        getattr(self._wh, self._spec.method)(on)
+        if on:
+            self._local_state = True
+        else:
+            self._local_state = False

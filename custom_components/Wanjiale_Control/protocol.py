@@ -1,8 +1,6 @@
-"""万家乐私有 TCP 协议完整实现。
+"""万家乐私有 TCP 协议实现。
 
-基于 jadx 反编译代码分析还原的协议：
-
-数据包格式（makeData）：
+数据包格式：
     AA BB | msgType | bArr2_len | checksum | enc_len_high | enc_len_low | bArr2(明文) | encrypted_body
 
 加密体结构（加密前）：
@@ -14,20 +12,19 @@
     iv = password_md5[16:32]
 
 消息类型：
-    9  - 登录（LoginMessage）
-    10 - 连接长连接服务器（ConnectMessage）
-    8  - 局域网认证（LocalLoginMessage）
-    17 - 业务消息/控制命令（BusinessMessage）
-    11 - 心跳响应（HeartMessage response）
+    9  - 登录
+    10 - 连接长连接服务器
+    8  - 局域网认证
+    17 - 业务消息/控制命令
+    11 - 心跳响应
     2  - 登录响应
     3  - 连接响应
 
 局域网控制：
-    - 加密密钥 = lanPin + lanPin (fullLanPin)
-    - 先发送 LocalLoginMessage 认证
-    - 认证成功后发送 BusinessMessage（JSON控制命令）
+    - 加密密钥 = lanPin + lanPin
+    - 先发送认证消息，认证通过后发送业务消息（JSON 控制命令）
 
-JSON控制命令格式：
+JSON 控制命令格式：
     {"to":"did","cmd":"opt","mid":"xxx","as":{"dvid":"value"}}
 """
 from __future__ import annotations
@@ -128,12 +125,10 @@ def make_data(
 ) -> bytes:
     """构造完整数据包。
 
-    对应 Java 代码：Util.makeData(byte b4, int i4, byte[] bArr, byte[] bArr2, String str)
-
     结构：
         header[7]: AA BB | msgType | bArr2_len | checksum | enc_len_high | enc_len_low
         bArr2: 明文数据
-        encrypted: AES加密后的 (serial + bArr)
+        encrypted: AES 加密后的 (serial + bArr)
     """
     bArr2_len = len(bArr2) if bArr2 else 0
     bArr_len = len(bArr) if bArr else 0
@@ -161,7 +156,6 @@ def make_data(
     header[5] = (enc_len >> 8) & 0xFF
     header[6] = enc_len & 0xFF
 
-    # 校验和（与 Java Util.makeData 一致）
     # checksum = enc_len_high + enc_len_low + sum(bArr2) + sum(enc_payload_raw)
     checksum = (header[5] & 0xFF) + (header[6] & 0xFF)
     if bArr2:
@@ -183,8 +177,6 @@ def make_data(
 def make_data_for_local(msg_type: int, bArr: bytes) -> bytes:
     """构造局域网数据包（不加密）。
 
-    对应 Java 代码：Util.makeDataForLocal(byte b4, byte[] bArr)
-
     结构：
         AA BB | msgType | bArr_len | checksum | 0 | 0 | bArr
     """
@@ -198,7 +190,7 @@ def make_data_for_local(msg_type: int, bArr: bytes) -> bytes:
     header[5] = 0
     header[6] = 0
 
-    # 校验和（Java: sum of bArr bytes only, not including header fields）
+    # 校验和只累计 bArr 字节，不含头部字段
     checksum = 0
     if bArr:
         for b in bArr:
@@ -213,7 +205,7 @@ def make_data_for_local(msg_type: int, bArr: bytes) -> bytes:
 
 
 # ======================================================================
-# 登录消息构造（还原 LoginMessage.getData）
+# 登录消息构造
 # ======================================================================
 def build_login_bArr2(username: str, user_type: int = USER_TYPE_NORMAL) -> bytes:
     """构造登录消息的明文部分 bArr2。
@@ -254,18 +246,16 @@ def build_login_bArr(username: str, imei: str = "") -> bytes:
 
 
 # ======================================================================
-# 局域网认证消息构造（还原 LocalLoginMessage.getData）
+# 局域网认证消息构造
 # ======================================================================
 def build_local_login_packet(serial: int, lan_pin: str) -> bytes:
     """构造局域网认证数据包。
 
-    Java LocalLoginMessage.getData():
-        byte[] bArr = {challenge_high, challenge_low};     // 2字节
-        byte[] bArr2 = {challenge_high, challenge_low, 0, 10}; // 4字节
-        return Util.makeData((byte)8, serial, bArr2, bArr, fullLanPin);
-        //             加密体=bArr2(4字节)    明文头=bArr(2字节)
+    随机挑战值取 2 字节：
+        明文头   = {challenge_high, challenge_low}
+        加密体   = {challenge_high, challenge_low, 0, 10}
 
-    msgType = 8, 加密密钥 = lanPin + lanPin
+    msgType = 8，加密密钥 = lanPin + lanPin
     """
     random_val = random.randint(0, 65535)
     bArr = bytes([(random_val >> 8) & 0xFF, random_val & 0xFF, 0x00, 0x0A])  # 加密体
@@ -276,7 +266,7 @@ def build_local_login_packet(serial: int, lan_pin: str) -> bytes:
 
 
 # ======================================================================
-# 业务消息构造（还原 BusinessMessage.getData）
+# 业务消息构造
 # ======================================================================
 def build_business_packet(serial: int, json_str: str, encrypt_key: str) -> bytes:
     """构造业务消息数据包。
@@ -290,7 +280,7 @@ def build_business_packet(serial: int, json_str: str, encrypt_key: str) -> bytes
 
 
 # ======================================================================
-# 登录响应解析（还原 LoginMessage.handle）
+# 登录响应解析
 # ======================================================================
 def parse_login_response(
     raw: bytes,
@@ -380,17 +370,14 @@ def parse_login_response(
 
 
 # ======================================================================
-# 局域网认证响应解析（还原 LocalLoginMessage.handle）
+# 局域网认证响应解析
 # ======================================================================
 def parse_local_login_response(raw: bytes, full_lan_pin: str) -> bool:
     """解析局域网认证响应。
 
-    Java ConnectionManager.x() → 解密后调用 LocalLoginMessage.handle(bArr, bArr2)
-    bArr = 解密后的 payload[2:]（跳过 serial）
-    result_code = bArr[0:2]
-
-    设备响应帧 = makeData 格式
-    当 enc_len == 0 时：响应无加密体，result_code 直接在明文 plaintext 中
+    result_code 位于解密后 payload 的 [2:4]（前 2 字节为 serial 回显）。
+    设备响应帧为完整数据包格式。
+    当 enc_len == 0 时响应无加密体，result_code 直接在明文中读取
     """
     if raw is None or len(raw) < 9:
         return False
@@ -404,8 +391,8 @@ def parse_local_login_response(raw: bytes, full_lan_pin: str) -> bool:
         return False
 
     _LOGGER.debug(
-        "local auth parse: msg_type=%d pl_len=%d enc_len=%d full_pin=%s",
-        raw[2] & 0xFF, plaintext_len, enc_len, full_lan_pin,
+        "local auth parse: msg_type=%d pl_len=%d enc_len=%d pin_len=%d",
+        raw[2] & 0xFF, plaintext_len, enc_len, len(full_lan_pin),
     )
 
     # enc_len == 0：无加密体，result_code 直接从明文读取
@@ -440,7 +427,11 @@ def parse_local_login_response(raw: bytes, full_lan_pin: str) -> bool:
 # HTTP 设备列表 / 签名
 # ======================================================================
 def build_auth_headers(uid: str, api_key: str) -> Dict[str, str]:
-    """构建 HTTP 请求头（ts/uid/key 签名）。"""
+    """构建 HTTP 请求头（ts/uid/key 签名）。
+
+    不要显式设置 Host：部分网络环境下显式指定 Host 会导致 /app/* 返回 502，
+    交给 requests/aiohttp 自动补全即可。
+    """
     ts = str(int(time.time() * 1000))
     key = md5_hash(api_key + ts)
     return {
@@ -448,7 +439,6 @@ def build_auth_headers(uid: str, api_key: str) -> Dict[str, str]:
         "uid": uid,
         "key": key,
         "User-Agent": "okhttp/3.8.1",
-        "Host": "newapi.machtalk.net",
         "Connection": "keep-alive",
         "Accept-Encoding": "gzip",
     }
@@ -516,7 +506,7 @@ class WanjialeProtocol:
         self._lock = threading.RLock()
         self._local_lock = threading.RLock()
 
-        # LAN 心跳（防止设备端空闲关闭连接，对应 App ConnectionManager.J() 的 HeartMessage）
+        # 局域网心跳（防止设备端空闲关闭连接）
         self._lan_heartbeat_interval: float = 40.0
         self._lan_stop_event = threading.Event()
         self._lan_heartbeat_thread: Optional[threading.Thread] = None
@@ -535,10 +525,10 @@ class WanjialeProtocol:
         frame = make_data(MSG_TYPE_LOGIN, serial, bArr, bArr2, self._password_md5)
 
         _LOGGER.debug(
-            "login frame: serial=%d bArr_len=%d bArr2_len=%d bArr2_hex=%s bArr_hex=%s pw_md5=%s",
-            serial, len(bArr), len(bArr2), bArr2.hex(), bArr.hex(), self._password_md5,
+            "login frame: serial=%d bArr_len=%d bArr2_len=%d password_md5=***",
+            serial, len(bArr), len(bArr2),
         )
-        _LOGGER.debug("login frame hex: %s", frame.hex())
+        _LOGGER.debug("login frame built: %d bytes", len(frame))
 
         _LOGGER.debug("connecting to %s:%d", self.host, self.port)
         with socket.create_connection((self.host, self.port), timeout=self.timeout) as s:
@@ -625,10 +615,9 @@ class WanjialeProtocol:
         frame = make_data(MSG_TYPE_CONNECT, serial, bArr, bArr2, self._password_md5)
 
         _LOGGER.debug(
-            "connect_server: serial=%d session_key=%s bArr2_hex=%s password_md5=%s",
-            serial, self.session_key, bArr2.hex(), self._password_md5,
+            "connect_server: serial=%d session_key_len=%d password_md5=***",
+            serial, len(self.session_key or ""),
         )
-        _LOGGER.debug("connect_server frame hex: %s", frame.hex())
 
         _LOGGER.debug("connecting to server %s:%d", self.server_ip, self.server_port)
         with self._lock:
@@ -661,7 +650,13 @@ class WanjialeProtocol:
         if len(decrypted) >= 12:
             result_code = decrypted[11] if len(decrypted) > 11 else 1
             if result_code == 0:
-                heartbeat = ((decrypted[2] & 0xFF) << 8) | (decrypted[3] & 0xFF)
+                # 偏移规则与 parse_login_response 一致（响应体在解析前被剥掉 2 字节序号）：
+                #   [0:2] 序号  [2:4] 序号回显  [4:6] 心跳秒数(大端)  ...  [11] 状态码
+                hb = _get_short(decrypted, 4) if len(decrypted) >= 6 else 0
+                if 10 <= hb <= 600:
+                    heartbeat = hb
+                else:
+                    _LOGGER.debug("connect_server: 心跳值异常(%s)，沿用默认 %ds", hb, heartbeat)
                 self._heartbeat_interval = heartbeat
                 self._last_heartbeat = time.time()
                 _LOGGER.info("connected to long connection server, heartbeat=%ds", heartbeat)
@@ -734,10 +729,9 @@ class WanjialeProtocol:
         raise TimeoutError(f"send_control 超时: mid={mid}")
 
     def send_control_async(self, did: str, as_dict: Dict[str, Any]) -> Dict[str, Any]:
-        """通过云端发送控制命令（fire-and-forget，不等待响应）。
+        """通过云端发送控制命令（不等待响应）。
 
-        对应原始 App 的 SendAction → ViewAdapter.b() → PostMessage 入队后立即返回。
-        状态确认由定时轮询的 coordinator 完成，与 App 的 onSuccess 回调模式一致。
+        发送后立即返回，状态确认交给定时轮询的 coordinator。
         """
         mid = str(int(time.time() * 1000))
         json_obj = {
@@ -766,8 +760,7 @@ class WanjialeProtocol:
     def discover_device(self, timeout: float = 3.0) -> Optional[str]:
         """通过 UDP 广播发现设备局域网 IP。
 
-        对应 Java: BroadcastManager.binary broadcast on port 7680
-        BroadcastMessage payload: {0, timestamp[4], 0, 0}
+        广播端口 7680，payload 为 {0, timestamp[4], 0, 0}
 
         Returns:
             设备局域网 IP 字符串，或 None
@@ -907,10 +900,9 @@ class WanjialeProtocol:
         self._lan_stop_event.clear()
 
     def _start_lan_heartbeat(self) -> None:
-        """启动 LAN 心跳守护线程。
+        """启动局域网心跳守护线程。
 
-        对应 App: ConnectionManager.J() 通过 NIO Selector isWritable 事件触发 HeartMessage 发送。
-        设备端嵌入式 TCP 空闲超时通常 15-60s，心跳每 40s 发一次 AA BB 01 保持连接活跃。
+        设备端 TCP 空闲超时通常 15-60s，每 40s 发一次 AA BB 01 保持连接活跃。
         """
         if self._lan_heartbeat_thread is not None and self._lan_heartbeat_thread.is_alive():
             return
@@ -944,10 +936,9 @@ class WanjialeProtocol:
 
     # ---- 局域网控制 ----
     def send_local_control(self, did: str, as_dict: Dict[str, Any]) -> Dict[str, Any]:
-        """通过局域网发送控制命令（fire-and-forget，不读响应）。
+        """通过局域网发送控制命令（不读响应）。
 
-        Java ConnectionManager 使用 NIO Selector 非阻塞 send，
-        此处同步 sendall 后立即返回，不阻塞 executor 线程。
+        同步 sendall 后立即返回，不阻塞 executor 线程。
         """
         if not self._local_socket or not self._local_lan_pin:
             raise RuntimeError("请先调用 connect_local()")
@@ -1103,7 +1094,7 @@ class WanjialeProtocol:
     def send_heartbeat(self) -> bool:
         """发送心跳包（保持长连接）。
 
-        心跳包是原始 3 字节：AA BB 01（与 Android 日志一致）。
+        心跳包为 3 字节：AA BB 01。
         """
         if not self._socket:
             return False
