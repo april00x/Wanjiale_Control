@@ -17,6 +17,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import features_001 as f001
+from .api import WanjialeApi, WanjialeGasWaterHeater
 from .capabilities import fault_info
 from .const import DOMAIN
 from .entity import WanjialeEntity
