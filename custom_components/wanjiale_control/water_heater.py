@@ -20,9 +20,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from ._entity import WanjialeDiagnosticEntity
 from .api import WanjialeApi, WanjialeGasWaterHeater
 from .const import DOMAIN
+from .entity import WanjialeDiagnosticEntity
 
 _LOGGER = logging.getLogger(__name__)
 

@@ -20,7 +20,7 @@
 
 方式一：
 
-1. 将 `custom_components/Wanjiale_Control` 放入 Home Assistant 的 `config/custom_components/` 目录；
+1. 将 `custom_components/wanjiale_control` 放入 Home Assistant 的 `config/custom_components/` 目录；
 
 2. 重启 Home Assistant；
 

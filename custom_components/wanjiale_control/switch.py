@@ -16,9 +16,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from ._entity import WanjialeEntity
 from .api import WanjialeApi, WanjialeGasWaterHeater
 from .const import DOMAIN
+from .entity import WanjialeEntity
 
 _LOGGER = logging.getLogger(__name__)
 
