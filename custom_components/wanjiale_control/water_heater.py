@@ -41,7 +41,7 @@ async def async_setup_entry(
         for dev in api.devices
         if isinstance(dev, WanjialeGasWaterHeater) and dev.has_feature("开关机")
     ]
-    _LOGGER.info("创建 %d 个热水器主实体", len(entities))
+    _LOGGER.debug("创建 %d 个热水器主实体", len(entities))
     async_add_entities(entities, True)
 
 

@@ -57,13 +57,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # 登录 + 加载设备在 executor 中完成（同步 socket）
         await hass.async_add_executor_job(api.login)
         await hass.async_add_executor_job(api.load_devices)
+        _LOGGER.debug("已加载 %d 台设备", len(api.devices))
         # 尝试建立长连接（可选，失败不影响启动）
         try:
             await hass.async_add_executor_job(api.connect_server)
         except Exception:  # noqa: BLE001
             _LOGGER.warning("建立长连接失败，设备状态与控制可能不可用")
     except Exception as exc:  # noqa: BLE001
-        _LOGGER.exception("Wanjiale Control 初始化失败")
+        # 重试日志交给 ConfigEntryNotReady 内置逻辑（HA 按 debug 记录并透传到 UI），
+        # 此处不再自行打非 debug 日志，避免每次自动重试都刷一条 ERROR
+        _LOGGER.debug("初始化失败，交由 Home Assistant 自动重试", exc_info=True)
         raise ConfigEntryNotReady(f"wanjiale_control: {exc}") from exc
 
     async def _do_refresh() -> WanjialeApi:
@@ -95,6 +98,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """选项变更后重载集成（功能集合需要重新计算）。"""
+    _LOGGER.debug("选项已变更，重载集成以重新计算功能集合")
     await hass.config_entries.async_reload(entry.entry_id)
 
 
@@ -107,4 +111,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if api:
             await hass.async_add_executor_job(api.close)
         hass.data[DOMAIN].pop(entry.entry_id, None)
+        _LOGGER.debug("集成已卸载")
     return unload_ok

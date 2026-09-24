@@ -77,7 +77,7 @@ async def async_setup_entry(
         for spec in _SPECS:
             if dev.has_point(spec.dvid):
                 entities.append(WanjialeBinarySensor(dev, coordinator, spec))
-    _LOGGER.info("创建 %d 个二元状态实体", len(entities))
+    _LOGGER.debug("创建 %d 个二元状态实体", len(entities))
     async_add_entities(entities, True)
 
 

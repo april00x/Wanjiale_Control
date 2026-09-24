@@ -297,7 +297,7 @@ def parse_login_response(
         [102:104] server_port (大端)
     """
     if len(raw) < 7:
-        _LOGGER.error("响应头长度不足: 只有 %d 字节, hex=%s", len(raw), raw.hex())
+        _LOGGER.error("响应头长度不足: 只有 %d 字节", len(raw))
         raise ValueError(f"响应头长度不足: {len(raw)} < 7")
 
     msg_type = raw[2] & 0xFF
@@ -312,8 +312,8 @@ def parse_login_response(
     enc_start = 7 + bArr2_len
     if len(raw) < enc_start + enc_len:
         _LOGGER.error(
-            "响应体长度不足: raw=%d expected=%d enc_len=%d, hex=%s",
-            len(raw), enc_start + enc_len, enc_len, raw.hex(),
+            "响应体长度不足: raw=%d expected=%d enc_len=%d",
+            len(raw), enc_start + enc_len, enc_len,
         )
         raise ValueError(f"响应体长度不足: {len(raw)} < {enc_start + enc_len}")
 
@@ -321,8 +321,8 @@ def parse_login_response(
 
     if len(encrypted) == 0:
         _LOGGER.error(
-            "加密体为空！enc_len=%d bArr2_len=%d, raw_hex=%s",
-            enc_len, bArr2_len, raw.hex(),
+            "加密体为空！enc_len=%d bArr2_len=%d",
+            enc_len, bArr2_len,
         )
         raise ValueError("服务器返回空加密数据，请检查账号密码是否正确")
 
@@ -331,12 +331,12 @@ def parse_login_response(
     iv = password_md5[16:32].encode("utf-8")
     decrypted = _aes_cbc_decrypt(encrypted, key, iv)
 
-    _LOGGER.debug("解密成功: decrypted_length=%d", len(decrypted))
+    _LOGGER.debug("登录响应解密成功: %d 字节", len(decrypted))
 
     if len(decrypted) < 106:
         _LOGGER.error(
-            "解密后数据长度不足: %d < 106, decrypted_hex=%s",
-            len(decrypted), decrypted.hex(),
+            "解密后数据长度不足: %d < 106",
+            len(decrypted),
         )
         raise ValueError(f"解密后数据长度不足: {len(decrypted)} < 106")
 
@@ -391,7 +391,7 @@ def parse_local_login_response(raw: bytes, full_lan_pin: str) -> bool:
         return False
 
     _LOGGER.debug(
-        "local auth parse: msg_type=%d pl_len=%d enc_len=%d pin_len=%d",
+        "局域网认证响应解析: msg_type=%d 明文=%d 加密=%d 密钥长度=%d",
         raw[2] & 0xFF, plaintext_len, enc_len, len(full_lan_pin),
     )
 
@@ -404,16 +404,16 @@ def parse_local_login_response(raw: bytes, full_lan_pin: str) -> bool:
 
     # 有加密体：解密后读取
     encrypted = raw[7 + plaintext_len : 7 + plaintext_len + enc_len]
-    _LOGGER.debug("local auth enc hex: %s", encrypted.hex()[:40])
+    _LOGGER.debug("局域网认证加密体: %d 字节", len(encrypted))
 
     key = full_lan_pin[:16].encode("utf-8")
     iv = full_lan_pin[16:32].encode("utf-8")
 
     try:
         decrypted = _aes_cbc_decrypt(encrypted, key, iv)
-        _LOGGER.debug("local auth decrypted: len=%d hex=%s", len(decrypted), decrypted.hex())
+        _LOGGER.debug("局域网认证解密成功: %d 字节", len(decrypted))
     except Exception:
-        _LOGGER.debug("local auth decrypt failed", exc_info=True)
+        _LOGGER.debug("局域网认证解密失败", exc_info=True)
         return False
 
     if len(decrypted) < 4:
@@ -525,18 +525,18 @@ class WanjialeProtocol:
         frame = make_data(MSG_TYPE_LOGIN, serial, bArr, bArr2, self._password_md5)
 
         _LOGGER.debug(
-            "login frame: serial=%d bArr_len=%d bArr2_len=%d password_md5=***",
+            "登录帧: serial=%d 加密体=%d 明文=%d password_md5=***",
             serial, len(bArr), len(bArr2),
         )
-        _LOGGER.debug("login frame built: %d bytes", len(frame))
+        _LOGGER.debug("登录帧构造完成: %d 字节", len(frame))
 
-        _LOGGER.debug("connecting to %s:%d", self.host, self.port)
+        _LOGGER.debug("正在连接 %s:%d", self.host, self.port)
         with socket.create_connection((self.host, self.port), timeout=self.timeout) as s:
             s.sendall(frame)
-            _LOGGER.debug("login packet sent, %d bytes, waiting for response...", len(frame))
+            _LOGGER.debug("登录包已发送: %d 字节，等待响应...", len(frame))
             resp = s.recv(4096)
 
-        _LOGGER.debug("received %d bytes, hex=%s", len(resp), resp[:80].hex())
+        _LOGGER.debug("收到登录响应: %d 字节", len(resp))
 
         if not resp:
             raise RuntimeError("服务器返回空响应")
@@ -549,7 +549,7 @@ class WanjialeProtocol:
         self.server_ip = result.get("server_ip")
         self.server_port = result.get("server_port")
 
-        _LOGGER.info("login ok: uid=%s server=%s:%s", self.uid, self.server_ip, self.server_port)
+        _LOGGER.info("登录成功: uid=%s 服务器=%s:%s", self.uid, self.server_ip, self.server_port)
         return result
 
     # ---- HTTP 拉设备列表 ----
@@ -571,14 +571,14 @@ class WanjialeProtocol:
             data = resp.json()
         except Exception:
             _LOGGER.debug(
-                "HTTP get_devices 失败: status=%s body=%s",
+                "HTTP 获取设备列表失败: status=%s body=%s",
                 getattr(resp, "status_code", None) if resp is not None else "N/A",
                 (getattr(resp, "text", "")[:200]) if resp is not None else "N/A",
             )
             raise
         if "devs" in data:
             devs: list[Dict[str, Any]] = data["devs"]
-            _LOGGER.info("got %d devices", len(devs))
+            _LOGGER.info("获取到 %d 台设备", len(devs))
             return devs
         raise RuntimeError(f"devices response missing 'devs': {data}")
 
@@ -598,7 +598,7 @@ class WanjialeProtocol:
                 data = await resp.json()
         if "devs" in data:
             devs: list[Dict[str, Any]] = data["devs"]
-            _LOGGER.info("got %d devices", len(devs))
+            _LOGGER.info("获取到 %d 台设备", len(devs))
             return devs
         raise RuntimeError(f"devices response missing 'devs': {data}")
 
@@ -615,11 +615,11 @@ class WanjialeProtocol:
         frame = make_data(MSG_TYPE_CONNECT, serial, bArr, bArr2, self._password_md5)
 
         _LOGGER.debug(
-            "connect_server: serial=%d session_key_len=%d password_md5=***",
+            "connect_server: serial=%d session_key长度=%d password_md5=***",
             serial, len(self.session_key or ""),
         )
 
-        _LOGGER.debug("connecting to server %s:%d", self.server_ip, self.server_port)
+        _LOGGER.debug("正在连接长连接服务器 %s:%d", self.server_ip, self.server_port)
         with self._lock:
             self._socket = socket.create_connection(
                 (self.server_ip, self.server_port), timeout=self.timeout
@@ -637,7 +637,7 @@ class WanjialeProtocol:
                 self._socket = None
                 raise
 
-        _LOGGER.debug("connect_server received: len=%d hex=%s", len(resp), resp[:40].hex())
+        _LOGGER.debug("connect_server: 收到握手响应 %d 字节", len(resp))
 
         encrypted = resp[7 + extra_len : 7 + extra_len + enc_len]
 
@@ -645,7 +645,7 @@ class WanjialeProtocol:
         iv = self._password_md5[16:32].encode("utf-8")
         decrypted = _aes_cbc_decrypt(encrypted, key, iv)
 
-        _LOGGER.debug("connect_server decrypted: len=%d hex=%s", len(decrypted), decrypted[:20].hex())
+        _LOGGER.debug("connect_server: 握手响应解密后 %d 字节", len(decrypted))
 
         if len(decrypted) >= 12:
             result_code = decrypted[11] if len(decrypted) > 11 else 1
@@ -659,9 +659,9 @@ class WanjialeProtocol:
                     _LOGGER.debug("connect_server: 心跳值异常(%s)，沿用默认 %ds", hb, heartbeat)
                 self._heartbeat_interval = heartbeat
                 self._last_heartbeat = time.time()
-                _LOGGER.info("connected to long connection server, heartbeat=%ds", heartbeat)
+                _LOGGER.info("长连接已建立: 心跳间隔 %ds", heartbeat)
                 return True
-            _LOGGER.warning("connect_server: result_code=%d", result_code)
+            _LOGGER.warning("connect_server: 握手返回码=%d", result_code)
 
         with self._lock:
             self._socket.close()
@@ -696,7 +696,7 @@ class WanjialeProtocol:
         serial = self._next_serial()
         frame = build_business_packet(serial, json_str, self._password_md5)
 
-        _LOGGER.debug("sending control to %s: %s", did, json_str)
+        _LOGGER.debug("云端下发控制 %s: %s", did, json_str)
 
         with self._lock:
             self._ensure_connected()
@@ -745,7 +745,7 @@ class WanjialeProtocol:
         serial = self._next_serial()
         frame = build_business_packet(serial, json_str, self._password_md5)
 
-        _LOGGER.debug("sending control async to %s: %s", did, json_str)
+        _LOGGER.debug("云端异步下发控制 %s: %s", did, json_str)
 
         with self._lock:
             self._ensure_connected()
@@ -809,7 +809,7 @@ class WanjialeProtocol:
     # ---- 局域网连接与认证 ----
     def connect_local(self, ip: str, port: int, lan_pin: str) -> bool:
         """连接设备局域网端口并进行认证。"""
-        _LOGGER.debug("connecting to local device %s:%d", ip, port)
+        _LOGGER.debug("正在连接局域网设备 %s:%d", ip, port)
 
         full_lan_pin = lan_pin + lan_pin
 
@@ -819,7 +819,7 @@ class WanjialeProtocol:
             # 发送局域网认证消息
             serial = self._next_serial()
             frame = build_local_login_packet(serial, lan_pin)
-            _LOGGER.debug("local login frame hex: %s", frame.hex())
+            _LOGGER.debug("局域网认证帧已发送: %d 字节", len(frame))
             self._local_socket.sendall(frame)
 
             # 读取响应（帧格式）
@@ -827,13 +827,13 @@ class WanjialeProtocol:
                 self._local_socket.settimeout(self.timeout)
                 raw = self._recv_local_frame()
             except Exception:
-                _LOGGER.exception("local device read error")
+                _LOGGER.debug("局域网设备读取异常", exc_info=True)
                 self._local_socket.close()
                 self._local_socket = None
                 return False
 
             if raw is None:
-                _LOGGER.error("local device no response")
+                _LOGGER.warning("局域网设备无响应")
                 self._local_socket.close()
                 self._local_socket = None
                 return False
@@ -842,13 +842,13 @@ class WanjialeProtocol:
 
             if success:
                 self._local_lan_pin = lan_pin
-                _LOGGER.info("local device authentication success")
+                _LOGGER.info("局域网认证成功")
                 self._start_lan_heartbeat()
             else:
-                _LOGGER.debug("local auth raw hex: %s", raw.hex() if raw else "None")
+                _LOGGER.debug("局域网认证响应长度: %d 字节", len(raw) if raw else 0)
                 self._local_socket.close()
                 self._local_socket = None
-                _LOGGER.error("local device authentication failed")
+                _LOGGER.warning("局域网认证失败")
 
             return success
 
@@ -885,6 +885,7 @@ class WanjialeProtocol:
 
     def close_local(self) -> None:
         """关闭局域网连接。"""
+        _LOGGER.debug("关闭局域网连接")
         self._lan_stop_event.set()
         with self._local_lock:
             if self._local_socket:
@@ -907,6 +908,7 @@ class WanjialeProtocol:
         if self._lan_heartbeat_thread is not None and self._lan_heartbeat_thread.is_alive():
             return
         self._lan_stop_event.clear()
+        _LOGGER.debug("启动局域网心跳线程，间隔 %d 秒", self._lan_heartbeat_interval)
         self._lan_heartbeat_thread = threading.Thread(
             target=self._lan_heartbeat_loop, daemon=True, name="wanjiale-lan-hb",
         )
@@ -925,7 +927,7 @@ class WanjialeProtocol:
                 try:
                     self._local_socket.sendall(b"\xAA\xBB\x01")
                 except Exception:
-                    _LOGGER.debug("LAN 心跳失败, 关闭本地连接")
+                    _LOGGER.debug("局域网心跳失败，关闭本地连接")
                     try:
                         self._local_socket.close()
                     except Exception:
@@ -956,7 +958,7 @@ class WanjialeProtocol:
         full_lan_pin = self._local_lan_pin + self._local_lan_pin
         frame = build_business_packet(serial, json_str, full_lan_pin)
 
-        _LOGGER.debug("sending local control to %s: %s", did, json_str)
+        _LOGGER.debug("局域网下发控制 %s: %s", did, json_str)
         with self._local_lock:
             self._local_socket.sendall(frame)
 
@@ -1159,7 +1161,7 @@ class WanjialeProtocol:
                 _LOGGER.debug("query_device: socket断开")
                 self.close_server()
                 return {"error": "connection lost"}
-            _LOGGER.debug("query_device sent: mid=%s", mid)
+            _LOGGER.debug("query_device: 已发送查询 mid=%s", mid)
 
             start_time = time.time()
             while time.time() - start_time < timeout:

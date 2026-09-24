@@ -785,10 +785,12 @@ class WanjialeApi:
         self._protocol.close_local()
 
     def close(self) -> None:
+        _LOGGER.debug("关闭云端长连接与局域网连接")
         self.close_server()
         self.close_local()
 
     def reconnect(self) -> bool:
+        _LOGGER.debug("重连长连接")
         self.close_server()
         return self.connect_server()
 

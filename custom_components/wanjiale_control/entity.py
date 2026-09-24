@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any, Callable, Dict, Optional, cast
 
 from homeassistant.exceptions import HomeAssistantError
@@ -17,6 +18,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpda
 
 from .api import WanjialeApi, WanjialeControlError, WanjialeDevice
 from .const import DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
 
 # 控制后延迟多久拉取一次真实状态（早于定时轮询，让下发结果尽快回显）
 REFRESH_DELAY = 2.0
@@ -72,6 +75,12 @@ class WanjialeEntity(CoordinatorEntity):
     # ------------------------------------------------------------------
     def _control(self, action: Callable[..., Any], *args: Any) -> None:
         """执行控制动作；失败原因以 HomeAssistantError 抛给用户。"""
+        _LOGGER.debug(
+            "下发控制 %s(%s) → 设备 %s",
+            getattr(action, "__name__", action),
+            ", ".join(str(arg) for arg in args),
+            self._device.name,
+        )
         try:
             action(*args)
         except WanjialeControlError as err:

@@ -36,7 +36,8 @@ async def validate_input(hass: HomeAssistant, data: Dict[str, Any]) -> Optional[
     try:
         await hass.async_add_executor_job(protocol.login)
     except Exception as exc:  # noqa: BLE001
-        _LOGGER.warning("wanjiale login failed: %s", exc)
+        # 输错密码属于正常用户操作，错误已通过 errors["base"] 在 UI 上呈现，无需打 warning
+        _LOGGER.debug("账号校验失败: %s", exc)
         msg = str(exc).lower()
         if "password" in msg or "uid" in msg or "未能从响应中解析出 uid" in msg:
             return "invalid_auth"

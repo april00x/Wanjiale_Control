@@ -114,7 +114,7 @@ async def async_setup_entry(
             entities.append(WanjialeReserveScheduleSensor(dev, coordinator))
         if dev.has_point(f001.DVID_NEXT_RESERVE):
             entities.append(WanjialeNextReserveSensor(dev, coordinator))
-    _LOGGER.info("创建 %d 个状态传感器", len(entities))
+    _LOGGER.debug("创建 %d 个状态传感器", len(entities))
     async_add_entities(entities, True)
 
 

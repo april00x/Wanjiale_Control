@@ -60,7 +60,7 @@ async def async_setup_entry(
             if spec.require_point and not dev.has_point(spec.require_point):
                 continue
             entities.append(WanjialeFeatureButton(dev, coordinator, spec))
-    _LOGGER.info("创建 %d 个动作实体", len(entities))
+    _LOGGER.debug("创建 %d 个动作实体", len(entities))
     async_add_entities(entities, True)
 
 
