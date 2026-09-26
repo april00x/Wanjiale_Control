@@ -83,11 +83,11 @@ DVID_ALL_DAY = "82"          # 晨浴 / 全天（4=开启）
 DVID_KITCHEN_TIMER = "87"    # 厨房洗定时档位（0=30 / 1=60 / 2=120 / 3=180 min）
 DVID_SPARKLING = "95"        # 冷/热气状态（单一机型证据，取位方式未验证）
 DVID_ONLINE = "1002"         # 设备在线状态（0=离线）
-DVID_DRAIN_ALARM = "241"     # 放水报警 / 放水完成（真机常态 = 0）
-DVID_CO_ALARM = "242"        # CO 报警（真机常态 = 7，取值语义未解码 → 只暴露原始值）
-DVID_HEAT_ALARM = "243"      # 即热报警（真机常态 = 0）
+DVID_DRAIN_ALARM = "241"     # 放水报警 / 放水完成（常态值 0）
+DVID_CO_ALARM = "242"        # CO 报警（常态值 7，取值语义未解码，只暴露原始值）
+DVID_HEAT_ALARM = "243"      # 即热报警（常态值 0）
 DVID_FA_TYPE_ALT = "246"     # 变升类型（第二路，仅 2 个机型上报，取值含义未解码）
-DVID_BLOCKAGE = "249"        # 堵塞条件（"连续6秒小于4L"，真机常态 = 1 → 是条件而非故障，只暴露原始值）
+DVID_BLOCKAGE = "249"        # 堵塞条件（"连续6秒小于4L"，常态值 1，是条件而非故障，只暴露原始值）
 DVID_RESERVE_HEATING = "250" # 预约加热中（1=加热中）
 
 # ======================================================================
@@ -149,14 +149,10 @@ SPARKLING_TEXT = {0: "关", 1: "冷气泡水", 2: "热气泡水"}
 
 # ======================================================================
 # 报警类点位 241 / 243 的非报警值
-# ----------------------------------------------------------------------
-# 设备仅声明了数值范围（241、243 均有 0~255 与 0~1 两种），未给出取值枚举，
-# 也没有任何可判定为报警的条件分支。
-# 实测 241 = 0、243 = 0 且长时间不变化，与本协议族「0 或 255 为无」的惯例一致。
-# 因此 0 与 255 视为正常，其余值判为报警；原始值同时保留（*_raw）便于核对。
-#
-# 242 与 249 不适用此规则：实测常态值分别为 7 和 1，
-# 取值语义不是布尔，无法据此判定，故只暴露原始值，不做布尔解读。
+# 设备仅声明了数值范围（0~255 与 0~1 两种），未给出取值枚举，也没有可判定为报警的
+# 条件分支；常态值为 0，与本协议族「0 或 255 为无」的惯例一致。故 0 与 255 视为正常，
+# 其余值判为报警，原始值以 *_raw 保留便于核对。
+# 242（常态值 7）与 249（常态值 1）不适用此规则：取值语义不是布尔，只暴露原始值。
 # ======================================================================
 ALARM_NORMAL_VALUES: tuple = (0, 255)
 
@@ -196,7 +192,7 @@ TEMP_MAX_ECO = 48
 SMART_DISPLAY_OFFSET = 3
 SMART_RAW_MAX_BASE = 45
 
-# 保温时长档位（dvid1=10 的 byte3）→ 分钟数；0 表示「即热一次」
+# 保温时长档位（dvid1=10 的 byte3）对应的分钟数；0 表示「即热一次」
 KEEP_WARM_OPTIONS: Dict[int, str] = {
     0: "即热一次",
     3: "30 分钟",
@@ -213,7 +209,7 @@ KEEP_WARM_OPTIONS: Dict[int, str] = {
 # 循环时长档位（dvid1=26 的 byte3）
 CIRCULATION_SPECIAL: Dict[int, str] = {0: "全循环", 1: "自学习"}
 
-# 厨房定时档位（dvid1=29 的 byte3）→ 分钟
+# 厨房定时档位（dvid1=29 的 byte3）对应的分钟
 KITCHEN_TIMER_OPTIONS: Dict[int, int] = {0: 30, 1: 60, 2: 120, 3: 180}
 
 # 回差温度范围 3~15
@@ -229,19 +225,19 @@ BATH_VOLUME_STEP = 2
 # 故障码（dvid17；255 = 正常）
 # ======================================================================
 FAULT_NONE = 255
-# 值 → 故障码文案（001 品类各机型一致）
+# 值到故障码文案的映射（001 品类各机型一致）
 FAULT_TEXT: Dict[int, str] = {
     0: "E0", 1: "E1", 2: "E2", 3: "E3", 4: "E4", 5: "E5", 6: "E6",
     7: "E7", 8: "E8", 9: "E9", 16: "En", 17: "F3", 18: "F4", 19: "F5",
     20: "F6", 21: "F7", 22: "F8", 23: "F9", 24: "EP", 25: "EL",
 }
-# 注：故障码背后的「标题 + 排查指引」与机型相关（同一编码在不同机型含义可能不同），
+# 故障码背后的「标题 + 排查指引」与机型相关（同一编码在不同机型含义可能不同），
 # 因此不放本模块，改由 faults_001.json 按 firm_product_model 存放，
-# 经 capabilities.fault_info() 读取。本模块只负责「值 → 短码」这一层。
+# 经 capabilities.fault_info() 读取；本模块只负责值到短码这一层。
 
 
 def fault_text(value: Any) -> Optional[str]:
-    """故障值 → 短码文案；255（正常）返回 None。"""
+    """故障值转短码文案；255（正常）返回 None。"""
     if value is None:
         return None
     code = int(value)
@@ -282,7 +278,7 @@ def pack_command(
 def pack_toggle(byte3: int, subtype: int = TOGGLE_SUBTYPE) -> int:
     """开关型复合参数：byte3=开关值，byte2=子类型，低 16 位=不修改。
 
-    实测：关 = 2*65536+65535 = 196607，开 = 16777216+2*65536+65535 = 16973823。
+    关 = 2*65536+65535 = 196607，开 = 16777216+2*65536+65535 = 16973823。
     """
     return (byte3 << 24) | (subtype << 16) | NO_CHANGE
 
@@ -326,7 +322,7 @@ def smart_raw_max(offset: int) -> int:
 
 
 def display_temp(raw: int, mode: Optional[int], offset: int) -> int:
-    """原始设定温度 → 对外显示温度。
+    """原始设定温度换算为对外显示温度。
 
     仅随温感模式做 +3-环境修正，且上限 48℃。
     """
@@ -336,7 +332,7 @@ def display_temp(raw: int, mode: Optional[int], offset: int) -> int:
 
 
 def raw_temp(display: int, mode: Optional[int], offset: int) -> int:
-    """对外显示温度 → 下发的原始设定温度（display_temp 的逆运算）。"""
+    """对外显示温度换算回下发的原始设定温度（display_temp 的逆运算）。"""
     if mode == MODE_SMART:
         return display - SMART_DISPLAY_OFFSET + offset
     return display
@@ -357,14 +353,13 @@ def temp_limits(mode: Optional[int], offset: int) -> Tuple[int, int]:
 def _parse_reserve_list(value: Any) -> Optional[List[Dict[str, int]]]:
     """解析 dvid6 预约时段列表，统一为 [{"s":分,"e":分}]。
 
-    设备上报的不是合法 JSON：键名不带引号、字符串用单引号包裹，
-    实测形如 [{'s':360,'e':540},{'s':1080,'e':1380}]。
-    因此不能按严格 JSON 解析，需先做一次字面量归一化。
+    设备上报的不是合法 JSON：键名不带引号、字符串用单引号包裹
+    （形如 [{'s':360,'e':540},{'s':1080,'e':1380}]），因此需先做一次字面量归一化。
     """
     data = value
     if isinstance(data, str):
         text = data.strip()
-        # 依次尝试：原样 → 裸键名加双引号 → 单引号替换为双引号
+        # 依次尝试：原样、裸键名加双引号、单引号替换为双引号
         candidates = (
             text,
             _JS_BARE_KEY_RE.sub(r'\1"\2"\3', text).replace("'", '"'),
@@ -567,7 +562,7 @@ def parse_state(state: Dict[str, Any]) -> Dict[str, Any]:
             out[raw_key] = value
             out[flag] = is_alarm(value)
 
-    # 242（实测常态 7）与 249（实测常态 1）的取值语义未解码，不做布尔解读，只暴露原始值
+    # 242（常态值 7）与 249（常态值 1）的取值语义未解码，不做布尔解读，只暴露原始值
     co_status = get(state.get(DVID_CO_ALARM))
     if co_status is not None:
         out["co_status_raw"] = co_status

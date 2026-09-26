@@ -38,24 +38,45 @@ def device_info(dev: WanjialeDevice) -> DeviceInfo:
 
 
 class WanjialeEntity(CoordinatorEntity):
-    """所有万家乐实体的基类。"""
+    """所有万家乐实体的基类。
+
+    实体 = 设备 × 角色（roles.py）：`_device` 提供 `device_info` / `available`，
+    `_role` 提供语义与控制方法。001 的设备自身即唯一角色（`role_suffix=""`），
+    因此既有实体 ID 完全不变。
+    """
 
     _attr_has_entity_name = True
 
     # 子类必须覆盖：实体短键（用于拼 unique_id，需全局唯一）
     _entity_key: str = ""
 
-    def __init__(self, device: WanjialeDevice, coordinator: DataUpdateCoordinator) -> None:
+    def __init__(
+        self,
+        device: WanjialeDevice,
+        coordinator: DataUpdateCoordinator,
+        role: Any = None,
+    ) -> None:
         super().__init__(coordinator)
         self._device = device
+        self._role = device if role is None else role
+
+    @property
+    def role(self) -> Any:
+        """本实体消费的角色（默认设备自身）。"""
+        return self._role
 
     @property
     def device_info(self) -> DeviceInfo:
         return device_info(self._device)
 
     @property
+    def role_suffix(self) -> str:
+        """角色后缀：拼在短键之后，使同一设备的多个角色各自唯一。"""
+        return str(getattr(self._role, "role_suffix", "") or "")
+
+    @property
     def unique_id(self) -> str:
-        return f"{self._device.unique_id()}-{self._entity_key}"
+        return f"{self._device.unique_id()}-{self._entity_key}{self.role_suffix}"
 
     @property
     def available(self) -> bool:

@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import config_validation as cv
 
-from .capabilities import feature_choices, feature_platform
+from .capabilities import feature_options
 from .const import (
     CONF_ENABLE_CONTROL_RIGHTS,
     CONF_FEATURE_FORCE_OFF,
@@ -36,21 +36,15 @@ async def validate_input(hass: HomeAssistant, data: Dict[str, Any]) -> Optional[
     try:
         await hass.async_add_executor_job(protocol.login)
     except Exception as exc:  # noqa: BLE001
-        # 输错密码属于正常用户操作，错误已通过 errors["base"] 在 UI 上呈现，无需打 warning
-        _LOGGER.debug("账号校验失败: %s", exc)
         msg = str(exc).lower()
         if "password" in msg or "uid" in msg or "未能从响应中解析出 uid" in msg:
+            # 输错密码属于正常用户操作，错误已通过 errors["base"] 在 UI 上呈现
+            _LOGGER.debug("账号校验失败（凭据错误）: %s", exc)
             return "invalid_auth"
+        # 连接类失败用户只看到「连接失败」，原因必须落进日志才能排查
+        _LOGGER.warning("账号校验失败（无法连接）: %s", exc, exc_info=True)
         return "cannot_connect"
     return None
-
-
-def _feature_select_options() -> Dict[str, str]:
-    """功能覆盖下拉项：值=功能名，标签=功能名（所属平台）。"""
-    return {
-        name: f"{name}（{feature_platform(name)}）" if feature_platform(name) else name
-        for name in feature_choices()
-    }
 
 
 class WanjialeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -110,7 +104,8 @@ class WanjialeOptionsFlow(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data=user_input)
 
         options = self.config_entry.options
-        choices = _feature_select_options()
+        # 值=裸功能名（与已存选项一致），标签=「品类:功能」（多品类下区分同名功能）
+        choices = feature_options()
         schema = vol.Schema(
             {
                 vol.Optional(

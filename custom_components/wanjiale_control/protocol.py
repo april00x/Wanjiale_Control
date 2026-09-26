@@ -37,7 +37,7 @@ import socket
 import struct
 import threading
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 try:
     from Crypto.Cipher import AES
@@ -56,6 +56,13 @@ except ImportError:  # pragma: no cover - 部分 Windows 环境包目录为小�
         unpad = None  # type: ignore
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _short_did(did: Any) -> str:
+    """日志用的设备标识：只留末 4 位（日志常被用户整段贴出来）。"""
+    text = str(did or "")
+    return f"***{text[-4:]}" if len(text) > 4 else "***"
+
 
 # ---------- 服务器配置 ----------
 SERVER_HOST = "unls2.machtalk.net"
@@ -280,21 +287,73 @@ def build_business_packet(serial: int, json_str: str, encrypt_key: str) -> bytes
 
 
 # ======================================================================
+# 「写数据点」报文构造：单键 / 多键的唯一判定点
+# ======================================================================
+class LocalTransportUnsupported(RuntimeError):
+    """该场景下局域网不支持本报文，调用方应改用云端。
+
+    目前只有一种情形：老设备 + 多键（见 build_opt_message）。
+    """
+
+
+# `acts` 消息族用于菜谱 / 烹饪类设备，与具名动作命令族互斥。
+# 本集成暂无菜谱类品类，这里只预留枚举值。
+MSG_CMD_ACTS = ("acts", "actsStart", "actsStop", "actsPause", "actsStep", "actsOpt")
+
+
+def build_opt_message(
+    did: str,
+    values: Dict[str, Any],
+    mid: str,
+    *,
+    old_device: bool = False,
+) -> str:
+    """构造「写数据点（cmd=opt）」的 JSON 报文。
+
+    单键还是多键只在这里判定：
+      - 老设备走局域网：只支持单键，报文为 {"to","cmd","mid","dvid","value"}
+      - 其它情况（含老设备走云端）：多键，报文为 {"to","cmd","mid","as":{…}}
+
+    Raises:
+        ValueError: 点位值为空。
+        LocalTransportUnsupported: 老设备 + 多键。设备只认第 1 个键，与其静默丢键，
+            不如让调用方改用云端。
+    """
+    if not values:
+        raise ValueError("build_opt_message: 点位值为空，拒绝下发")
+
+    if old_device:
+        if len(values) > 1:
+            raise LocalTransportUnsupported(
+                "老设备 + 局域网只支持单键报文，当前 "
+                f"{len(values)} 个键（{', '.join(str(k) for k in values)}）"
+            )
+        dvid, value = next(iter(values.items()))
+        payload: Dict[str, Any] = {
+            "to": did, "cmd": "opt", "mid": mid, "dvid": dvid, "value": value,
+        }
+    else:
+        payload = {"to": did, "cmd": "opt", "mid": mid, "as": values}
+
+    return json.dumps(payload, separators=(",", ":"))
+
+
+# ======================================================================
 # 登录响应解析
 # ======================================================================
 def parse_login_response(
     raw: bytes,
     password_md5: str,
 ) -> Dict[str, Any]:
-    """解析登录响应。
+    """解析登录响应（偏移均相对解密后数据）。
 
-    响应结构（解密后）：
-        [0:2]   serial
-        [2:34]  session_key (32 bytes)
-        [34:66] uid (32 bytes)
-        [66:98] api_key (32 bytes)
-        [98:102] server_ip (4 bytes)
-        [102:104] server_port (大端)
+        [0:2]     本机发出的序号
+        [2:4]     序号回显
+        [4:36]    session_key (32 bytes)
+        [36:68]   uid (32 bytes)
+        [68:100]  api_key (32 bytes)
+        [100:104] server_ip (4 bytes)
+        [104:106] server_port (大端)
     """
     if len(raw) < 7:
         _LOGGER.error("响应头长度不足: 只有 %d 字节", len(raw))
@@ -373,11 +432,12 @@ def parse_login_response(
 # 局域网认证响应解析
 # ======================================================================
 def parse_local_login_response(raw: bytes, full_lan_pin: str) -> bool:
-    """解析局域网认证响应。
+    """解析局域网认证响应；result_code == 0 即认证成功。
 
-    result_code 位于解密后 payload 的 [2:4]（前 2 字节为 serial 回显）。
-    设备响应帧为完整数据包格式。
-    当 enc_len == 0 时响应无加密体，result_code 直接在明文中读取
+    响应帧为完整数据包格式（7 字节头 + 明文段 + 加密段），两种形态：
+      - enc_len == 0：result_code 取明文段前 2 字节，即 raw[7:9]；
+      - enc_len != 0：解密后取 decrypted[2:4]（前 2 字节视为序号回显）。
+        该分支尚无实测样本，遇到带加密体的设备时需先核对偏移。
     """
     if raw is None or len(raw) < 9:
         return False
@@ -445,6 +505,135 @@ def build_auth_headers(uid: str, api_key: str) -> Dict[str, str]:
 
 
 # ======================================================================
+# 业务响应形态归一化
+# ======================================================================
+def normalize_fids(value: Any) -> list[str]:
+    """把 `fids`（云端故障列表）归一化为字符串数组。
+
+    老设备下发逗号分隔字符串（如 "1,2,3"），新设备下发数组。
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [part.strip() for part in value.split(",") if part.strip()]
+    if isinstance(value, (list, tuple, set)):
+        return [str(item) for item in value]
+    return [str(value)]
+
+
+def normalize_business_payload(data: Any) -> Any:
+    """把业务响应统一成「`as` 字典 + `fids` 数组」形态。
+
+    老设备用 `values: [{"dvid","value"}]` 代替 `as`，取值统一转成字符串。
+
+    按形态特征而非设备代际判断：新设备不会「缺 as 又带 values」，
+    因此这一判据与设备代际等价，传输层不必追踪设备类型。
+    """
+    if not isinstance(data, dict):
+        return data
+
+    if "as" not in data:
+        values = data.get("values")
+        if isinstance(values, list):
+            as_dict: Dict[str, str] = {}
+            for item in values:
+                if isinstance(item, dict) and item.get("dvid") is not None:
+                    as_dict[str(item["dvid"])] = str(item.get("value", ""))
+            if as_dict:
+                data.pop("values", None)
+                data["as"] = as_dict
+
+    if "fids" in data:
+        data["fids"] = normalize_fids(data.get("fids"))
+
+    return data
+
+
+# ======================================================================
+# 局域网链路（按设备）
+# ======================================================================
+class DiscoveredDevice(NamedTuple):
+    """UDP 广播发现到的一台设备。"""
+
+    did: str
+    ip: str
+    model: str
+    lan_supported: bool
+
+
+class _LocalLink:
+    """一台设备的局域网链路：socket + 认证 lanPin + 心跳线程。
+
+    字段都只服务这台设备，不从其它设备复用。
+    """
+
+    __slots__ = ("did", "lan_pin", "socket", "lock", "stop_event", "heartbeat_thread")
+
+    def __init__(self, did: str, lan_pin: str) -> None:
+        self.did = did
+        self.lan_pin = lan_pin
+        self.socket: Optional[socket.socket] = None
+        self.lock = threading.RLock()
+        self.stop_event = threading.Event()
+        self.heartbeat_thread: Optional[threading.Thread] = None
+
+
+def parse_broadcast_reply(data: bytes, ip: str) -> Optional[DiscoveredDevice]:
+    """解析 UDP 广播应答，取出设备标识（did）与型号。
+
+    设备有两种应答形式：
+    1. 裸 JSON（不带本地帧头），形如 {"cmd":"lanDevInfo","did":…}，
+       出现即说明该设备可走局域网。
+    2. AA BB 本地帧（7 字节头 + payload），payload 结构：
+        payload[0]             = didLen（0 = 设备尚未授权）
+        payload[1 : 1+didLen]  = did
+        payload[1+didLen]      = modelLen
+        payload[2+didLen : …]  = model
+        其后                    = 数据格式(0=JSON/1=二进制)、是否支持局域网控制、配网状态等
+    """
+    if not data:
+        return None
+
+    # 形式 1：裸 JSON（先判，因为它不以 AA BB 开头）
+    if data[:1] == b"{":
+        try:
+            obj = json.loads(data.decode("utf-8", errors="ignore"))
+        except Exception:  # noqa: BLE001
+            return None
+        did = str(obj.get("did") or "")
+        if not did:
+            return None
+        return DiscoveredDevice(did=did, ip=ip, model="", lan_supported=True)
+
+    # 形式 2：AA BB 本地帧
+    if len(data) < 3 or data[0] != 0xAA or data[1] != 0xBB:
+        return None
+    payload = data[7:]  # 跳过本地帧头
+    if not payload:
+        return None
+
+    if len(payload) < 10:
+        _LOGGER.debug("广播应答过短（%d 字节），忽略", len(payload))
+        return None
+    did_len = payload[0] & 0xFF
+    if did_len == 0 or len(payload) < did_len + 1:
+        _LOGGER.debug("广播应答未携带 did（设备尚未授权），忽略")
+        return None
+
+    did = payload[1 : 1 + did_len].decode("utf-8", errors="ignore")
+    pos = 1 + did_len
+    model = ""
+    model_len = payload[pos] & 0xFF
+    pos += 1
+    model = payload[pos : pos + model_len].decode("utf-8", errors="ignore")
+    pos += model_len
+
+    # payload[pos] = 数据格式，payload[pos+1] = 是否支持局域网控制
+    lan_supported = pos + 1 < len(payload) and (payload[pos + 1] & 0xFF) == 1
+    return DiscoveredDevice(did=did, ip=ip, model=model, lan_supported=lan_supported)
+
+
+# ======================================================================
 # 高层封装：WanjialeProtocol
 # ======================================================================
 class WanjialeProtocol:
@@ -463,9 +652,9 @@ class WanjialeProtocol:
         proto.connect_server()        # 连接长连接服务器
         proto.send_control(did, {"2": "71045130"})  # 发送控制命令
 
-        # 局域网控制（需要设备的 lanPin）
-        proto.connect_local(device_ip, device_port, lan_pin)  # 局域网认证
-        proto.send_local_control(did, {"2": "71045130"})       # 局域网控制
+        # 局域网控制（需要设备的 lanPin；连接按 did 各自维护，互不干扰）
+        proto.connect_local(did, device_ip, device_port, lan_pin)  # 局域网认证
+        proto.send_local_control(did, {"2": "71045130"})           # 局域网控制
     """
 
     def __init__(
@@ -498,18 +687,20 @@ class WanjialeProtocol:
 
         # 连接状态
         self._socket: Optional[socket.socket] = None
-        self._local_socket: Optional[socket.socket] = None
-        self._local_lan_pin: Optional[str] = None
         self._serial = random.randint(0, 9999)
         self._last_heartbeat = 0.0
         self._heartbeat_interval = 40
         self._lock = threading.RLock()
-        self._local_lock = threading.RLock()
+        # 云端通道不可用的“首次”标记：网络长期不通时只在进入失败态时提示一次
+        self._cloud_down: bool = False
 
-        # 局域网心跳（防止设备端空闲关闭连接）
-        self._lan_heartbeat_interval: float = 40.0
-        self._lan_stop_event = threading.Event()
-        self._lan_heartbeat_thread: Optional[threading.Thread] = None
+        # 局域网连接按 did 独立维护：多设备共用一份 socket / lanPin 会误发。
+        self._local_links: Dict[str, "_LocalLink"] = {}
+        self._local_links_lock = threading.RLock()
+
+        # 局域网心跳间隔。设备端空闲会关闭链路，40s 间隔保不住连接，
+        # 这里与客户端本地连接的 setHeartbeatTime(10000) 保持一致。
+        self._lan_heartbeat_interval: float = 10.0
 
     def _next_serial(self) -> int:
         """获取下一个序列号。"""
@@ -549,7 +740,8 @@ class WanjialeProtocol:
         self.server_ip = result.get("server_ip")
         self.server_port = result.get("server_port")
 
-        _LOGGER.info("登录成功: uid=%s 服务器=%s:%s", self.uid, self.server_ip, self.server_port)
+        # uid 属账号标识，不打进日志（诊断导出里同样是脱敏的）
+        _LOGGER.info("登录成功: 服务器=%s:%s", self.server_ip, self.server_port)
         return result
 
     # ---- HTTP 拉设备列表 ----
@@ -685,13 +877,7 @@ class WanjialeProtocol:
             timeout = self.timeout
 
         mid = str(int(time.time() * 1000))
-        json_obj = {
-            "to": did,
-            "cmd": "opt",
-            "mid": mid,
-            "as": as_dict,
-        }
-        json_str = json.dumps(json_obj, separators=(",", ":"))
+        json_str = build_opt_message(did, as_dict, mid)
 
         serial = self._next_serial()
         frame = build_business_packet(serial, json_str, self._password_md5)
@@ -706,6 +892,7 @@ class WanjialeProtocol:
             self._last_heartbeat = time.time()
 
             start_time = time.time()
+            read_error_logged = False
             while time.time() - start_time < timeout:
                 remaining = timeout - (time.time() - start_time)
                 self._socket.settimeout(max(remaining, 1.0))
@@ -724,6 +911,10 @@ class WanjialeProtocol:
                 except socket.timeout:
                     continue
                 except Exception:
+                    # 只报第一次：同一轮里同样的错会被反复撞到，堆栈留一份即可
+                    if not read_error_logged:
+                        read_error_logged = True
+                        _LOGGER.warning("send_control: 读取响应异常", exc_info=True)
                     continue
 
         raise TimeoutError(f"send_control 超时: mid={mid}")
@@ -734,13 +925,7 @@ class WanjialeProtocol:
         发送后立即返回，状态确认交给定时轮询的 coordinator。
         """
         mid = str(int(time.time() * 1000))
-        json_obj = {
-            "to": did,
-            "cmd": "opt",
-            "mid": mid,
-            "as": as_dict,
-        }
-        json_str = json.dumps(json_obj, separators=(",", ":"))
+        json_str = build_opt_message(did, as_dict, mid)
 
         serial = self._next_serial()
         frame = build_business_packet(serial, json_str, self._password_md5)
@@ -757,14 +942,17 @@ class WanjialeProtocol:
         return {"status": "sent", "mid": mid}
 
     # ---- UDP 局域网设备发现 ----
-    def discover_device(self, timeout: float = 3.0) -> Optional[str]:
-        """通过 UDP 广播发现设备局域网 IP。
+    def discover_devices(self, timeout: float = 3.0) -> List[DiscoveredDevice]:
+        """通过 UDP 广播发现局域网设备，收集全部应答直到超时。
 
-        广播端口 7680，payload 为 {0, timestamp[4], 0, 0}
+        广播端口 7680，payload 为 {len=0, timestamp[4], 0, 0}。
+        多设备下必须逐台识别，因此这里收全部应答，由调用方按 did 回填地址。
 
         Returns:
-            设备局域网 IP 字符串，或 None
+            发现的设备列表（可能为空）。解析失败或重复的应答被丢弃。
         """
+        sock: Optional[socket.socket] = None
+        found: List[DiscoveredDevice] = []
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -779,103 +967,154 @@ class WanjialeProtocol:
                 0x00, 0x00,
             ])
             frame = make_data_for_local(MSG_TYPE_BROADCAST, bArr)
-
             sock.sendto(frame, ("255.255.255.255", BROADCAST_PORT))
-            _LOGGER.debug("discover_device: 已发送 UDP 广播, ts=%d", ts)
+            _LOGGER.debug("discover_devices: 已发送 UDP 广播, ts=%d", ts)
 
-            # 等待设备响应
-            data, addr = sock.recvfrom(1024)
-            sock.close()
-
-            if len(data) >= 3 and data[0] == 0xAA and data[1] == 0xBB:
-                _LOGGER.info("discover_device: 发现设备 %s", addr[0])
-                return addr[0]
-
-            _LOGGER.debug("discover_device: 收到非 AA BB 响应: %s", data[:10].hex())
-            return None
-
-        except socket.timeout:
-            _LOGGER.debug("discover_device: 广播超时（设备可能不在同一子网）")
-            return None
-        except Exception:
-            _LOGGER.debug("discover_device: 广播失败", exc_info=True)
-            return None
+            deadline = time.time() + timeout
+            while True:
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    break
+                sock.settimeout(remaining)
+                try:
+                    data, addr = sock.recvfrom(2048)
+                except socket.timeout:
+                    break
+                item = parse_broadcast_reply(data, addr[0])
+                if item is None:
+                    continue
+                if any(existing.did == item.did for existing in found):
+                    continue  # 同一台设备重复应答
+                found.append(item)
+                _LOGGER.info(
+                    "discover_devices: 发现 %s（%s）→ %s",
+                    _short_did(item.did), item.model or "未知型号", item.ip,
+                )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("discover_devices: UDP 广播失败：%s", err, exc_info=True)
         finally:
-            try:
-                sock.close()
-            except Exception:
-                pass
+            if sock is not None:
+                try:
+                    sock.close()
+                except Exception:  # noqa: BLE001
+                    pass
+        if not found:
+            _LOGGER.debug("discover_devices: 未发现设备（可能不在同一子网）")
+        return found
 
     # ---- 局域网连接与认证 ----
-    def connect_local(self, ip: str, port: int, lan_pin: str) -> bool:
-        """连接设备局域网端口并进行认证。"""
-        _LOGGER.debug("正在连接局域网设备 %s:%d", ip, port)
+    def local_link(self, did: str) -> Optional["_LocalLink"]:
+        """取该设备已连接的局域网链路；未连接返回 None。"""
+        with self._local_links_lock:
+            link = self._local_links.get(did)
+        if link is None:
+            return None
+        with link.lock:
+            return link if link.socket is not None else None
 
+    def is_local_connected(self, did: str) -> bool:
+        """该设备是否已有可用的局域网连接。"""
+        return self.local_link(did) is not None
+
+    def connect_local(
+        self,
+        did: str,
+        ip: str,
+        port: int,
+        lan_pin: str,
+        timeout: Optional[float] = None,
+    ) -> bool:
+        """连接指定设备的局域网端口并认证，连接按 did 独立维护。
+
+        timeout 为「TCP 连接 + 认证应答读取」的总预算，缺省用实例级 self.timeout。
+        查询路径会传入轮询预算，避免设备不可达时把单轮耗时拖满默认超时。
+        """
+        connect_timeout = self.timeout if timeout is None else max(float(timeout), 0.05)
+        with self._local_links_lock:
+            if self.local_link(did) is not None:
+                return True  # 已有可用连接，直接复用
+            link = _LocalLink(did=did, lan_pin=lan_pin)
+            self._local_links[did] = link
+
+        _LOGGER.debug("正在连接局域网设备 %s（%s:%d）", did, ip, port)
         full_lan_pin = lan_pin + lan_pin
 
-        with self._local_lock:
-            self._local_socket = socket.create_connection((ip, port), timeout=self.timeout)
+        try:
+            sock = socket.create_connection((ip, port), timeout=connect_timeout)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("局域网连接 %s:%d 失败：%s", ip, port, err, exc_info=True)
+            self.close_local(did)
+            return False
 
-            # 发送局域网认证消息
+        with link.lock:
+            link.socket = sock
+
+        # 发送局域网认证消息
+        try:
             serial = self._next_serial()
             frame = build_local_login_packet(serial, lan_pin)
             _LOGGER.debug("局域网认证帧已发送: %d 字节", len(frame))
-            self._local_socket.sendall(frame)
+            sock.sendall(frame)
 
-            # 读取响应（帧格式）
-            try:
-                self._local_socket.settimeout(self.timeout)
-                raw = self._recv_local_frame()
-            except Exception:
-                _LOGGER.debug("局域网设备读取异常", exc_info=True)
-                self._local_socket.close()
-                self._local_socket = None
-                return False
+            # 读取响应（帧格式）；按同一预算收敛，避免认证无响应时长时间挂住
+            sock.settimeout(connect_timeout)
+            raw = self._recv_local_frame(link, timeout=connect_timeout)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("局域网设备读取异常（%s）：%s", _short_did(did), err, exc_info=True)
+            self.close_local(did)
+            return False
 
-            if raw is None:
-                _LOGGER.warning("局域网设备无响应")
-                self._local_socket.close()
-                self._local_socket = None
-                return False
+        if raw is None:
+            _LOGGER.warning("局域网设备无响应: %s", _short_did(did))
+            self.close_local(did)
+            return False
 
-            success = parse_local_login_response(raw, full_lan_pin)
+        if not parse_local_login_response(raw, full_lan_pin):
+            # 认证失败多为 lanPin 不符或设备拒绝，调用方需要据此判断局域网是否可用
+            _LOGGER.warning(
+                "局域网认证失败: %s（响应 %d 字节，请核对设备 lanPin）",
+                _short_did(did), len(raw),
+            )
+            self.close_local(did)
+            return False
 
-            if success:
-                self._local_lan_pin = lan_pin
-                _LOGGER.info("局域网认证成功")
-                self._start_lan_heartbeat()
-            else:
-                _LOGGER.debug("局域网认证响应长度: %d 字节", len(raw) if raw else 0)
-                self._local_socket.close()
-                self._local_socket = None
-                _LOGGER.warning("局域网认证失败")
+        _LOGGER.info("局域网认证成功: %s", _short_did(did))
+        self._start_lan_heartbeat(link)
+        return True
 
-            return success
+    def _recv_local_frame(self, link: "_LocalLink", timeout: Optional[float] = None) -> Optional[bytes]:
+        """从该设备的局域网 socket 读取完整帧。
 
-    def _recv_local_frame(self) -> Optional[bytes]:
-        """从局域网 socket 读取完整帧。"""
+        `timeout` 透传给 `_recv_local_exact`（缺省沿用「至少 3 秒」的宽松下限）。
+        """
         try:
-            hdr = self._recv_local_exact(7)
+            hdr = self._recv_local_exact(link, 7, timeout=timeout)
             if hdr[0] != 0xAA or hdr[1] != 0xBB:
                 return None
             plaintext_len = hdr[3] & 0xFF
             enc_len = _get_short(hdr, 5)
             if enc_len > 65535:
                 return None
-            body = self._recv_local_exact(plaintext_len + enc_len)
+            body = self._recv_local_exact(link, plaintext_len + enc_len, timeout=timeout)
             return hdr + body
         except (socket.timeout, ConnectionError):
             return None
 
-    def _recv_local_exact(self, n: int) -> bytes:
-        """从局域网 socket 读取精确 n 字节。"""
+    def _recv_local_exact(self, link: "_LocalLink", n: int, timeout: Optional[float] = None) -> bytes:
+        """从该设备的局域网 socket 读取精确 n 字节。
+
+        timeout 为本次读取的总预算，缺省给 3 秒兜底；认证路径会传入更紧的轮询预算。
+        """
         if n > 65535:
             raise RuntimeError(f"_recv_local_exact: 请求读取 {n} 字节，超过最大允许值")
+        if link.socket is None:
+            raise ConnectionError("局域网连接已关闭")
         data = b""
-        deadline = time.time() + max(n / 4096.0, 3.0)
+        budget = max(n / 4096.0, 3.0) if timeout is None else max(float(timeout), 0.05)
+        deadline = time.time() + budget
         while len(data) < n:
-            self._local_socket.settimeout(max(deadline - time.time(), 0.1))
-            chunk = self._local_socket.recv(n - len(data))
+            link.socket.settimeout(max(deadline - time.time(), 0.1))
+            chunk = link.socket.recv(n - len(data))
             if not chunk:
                 raise ConnectionError("局域网连接已关闭")
             if time.time() > deadline:
@@ -883,95 +1122,127 @@ class WanjialeProtocol:
             data += chunk
         return data
 
-    def close_local(self) -> None:
-        """关闭局域网连接。"""
-        _LOGGER.debug("关闭局域网连接")
-        self._lan_stop_event.set()
-        with self._local_lock:
-            if self._local_socket:
-                try:
-                    self._local_socket.close()
-                except Exception:
-                    pass
-                self._local_socket = None
-                self._local_lan_pin = None
-        if self._lan_heartbeat_thread is not None and self._lan_heartbeat_thread.is_alive():
-            self._lan_heartbeat_thread.join(timeout=2.0)
-        self._lan_heartbeat_thread = None
-        self._lan_stop_event.clear()
-
-    def _start_lan_heartbeat(self) -> None:
-        """启动局域网心跳守护线程。
-
-        设备端 TCP 空闲超时通常 15-60s，每 40s 发一次 AA BB 01 保持连接活跃。
-        """
-        if self._lan_heartbeat_thread is not None and self._lan_heartbeat_thread.is_alive():
+    def close_local(self, did: Optional[str] = None) -> None:
+        """关闭局域网连接：指定 `did` 只关该设备，不指定则关闭**全部**。"""
+        with self._local_links_lock:
+            if did is None:
+                links = list(self._local_links.values())
+                self._local_links.clear()
+            else:
+                link = self._local_links.pop(did, None)
+                links = [link] if link is not None else []
+        if not links:
             return
-        self._lan_stop_event.clear()
-        _LOGGER.debug("启动局域网心跳线程，间隔 %d 秒", self._lan_heartbeat_interval)
-        self._lan_heartbeat_thread = threading.Thread(
-            target=self._lan_heartbeat_loop, daemon=True, name="wanjiale-lan-hb",
+
+        _LOGGER.debug("关闭局域网连接: %s", did or "全部")
+        for link in links:
+            link.stop_event.set()
+            with link.lock:
+                if link.socket is not None:
+                    try:
+                        link.socket.close()
+                    except Exception:  # noqa: BLE001
+                        pass
+                    link.socket = None
+        for link in links:
+            thread = link.heartbeat_thread
+            if thread is not None and thread.is_alive():
+                thread.join(timeout=2.0)
+            link.heartbeat_thread = None
+
+    def _start_lan_heartbeat(self, link: "_LocalLink") -> None:
+        """为该设备启动局域网心跳守护线程，每 _lan_heartbeat_interval 秒发一次 AA BB 01。"""
+        if link.heartbeat_thread is not None and link.heartbeat_thread.is_alive():
+            return
+        link.stop_event.clear()
+        _LOGGER.debug(
+            "启动局域网心跳线程（%s），间隔 %d 秒", link.did, self._lan_heartbeat_interval
         )
-        self._lan_heartbeat_thread.start()
+        link.heartbeat_thread = threading.Thread(
+            target=self._lan_heartbeat_loop,
+            args=(link,),
+            daemon=True,
+            name=f"wanjiale-lan-hb-{link.did[-6:]}",
+        )
+        link.heartbeat_thread.start()
 
-    def _lan_heartbeat_loop(self) -> None:
-        """LAN 心跳循环：每 _lan_heartbeat_interval 秒发 AA BB 01。
+    def _lan_heartbeat_loop(self, link: "_LocalLink") -> None:
+        """该设备的局域网心跳循环。
 
-        close_local() 通过 _lan_stop_event.set() 通知退出。
-        心跳失败（BrokenPipe/ConnectionReset）时自动清理 socket 并退出。
+        close_local(did) 通过 link.stop_event.set() 通知退出；
+        心跳失败时清理该设备的链路并退出。
         """
-        while not self._lan_stop_event.wait(self._lan_heartbeat_interval):
-            with self._local_lock:
-                if self._local_socket is None:
+        while not link.stop_event.wait(self._lan_heartbeat_interval):
+            with link.lock:
+                if link.socket is None:
                     return
                 try:
-                    self._local_socket.sendall(b"\xAA\xBB\x01")
-                except Exception:
-                    _LOGGER.debug("局域网心跳失败，关闭本地连接")
+                    link.socket.sendall(b"\xAA\xBB\x01")
+                except Exception:  # noqa: BLE001
+                    _LOGGER.warning("局域网心跳失败，关闭 %s 的局域网连接", _short_did(link.did))
                     try:
-                        self._local_socket.close()
-                    except Exception:
+                        link.socket.close()
+                    except Exception:  # noqa: BLE001
                         pass
-                    self._local_socket = None
-                    self._local_lan_pin = None
+                    link.socket = None
+                    with self._local_links_lock:
+                        self._local_links.pop(link.did, None)
                     return
 
     # ---- 局域网控制 ----
-    def send_local_control(self, did: str, as_dict: Dict[str, Any]) -> Dict[str, Any]:
-        """通过局域网发送控制命令（不读响应）。
+    def _require_local_link(self, did: str) -> "_LocalLink":
+        """取该设备已连接的局域网链路，并校验链路归属。
 
-        同步 sendall 后立即返回，不阻塞 executor 线程。
+        按 did 取值时结构上不会取错，这里显式校验是防止将来映射键错位后静默误发。
         """
-        if not self._local_socket or not self._local_lan_pin:
-            raise RuntimeError("请先调用 connect_local()")
+        link = self.local_link(did)
+        if link is None:
+            raise RuntimeError(f"设备 {did} 尚未建立局域网连接，请先调用 connect_local()")
+        if link.did != did:
+            raise LocalTransportUnsupported(
+                f"局域网链路属于 {link.did}，拒绝用于 {did}（跨设备误发保护）"
+            )
+        return link
+
+    def send_local_control(
+        self,
+        did: str,
+        as_dict: Dict[str, Any],
+        old_device: bool = False,
+    ) -> Dict[str, Any]:
+        """通过局域网发送控制命令（不读响应），sendall 后立即返回。
+
+        old_device=True 时改用老设备的单键报文，多键会被拒绝（抛
+        LocalTransportUnsupported）并改走云端，避免设备静默丢弃多余键。
+        """
+        link = self._require_local_link(did)
 
         mid = str(int(time.time() * 1000))
-        json_obj = {
-            "to": did,
-            "cmd": "opt",
-            "mid": mid,
-            "as": as_dict,
-        }
-        json_str = json.dumps(json_obj, separators=(",", ":"))
+        json_str = build_opt_message(did, as_dict, mid, old_device=old_device)
 
         serial = self._next_serial()
-        full_lan_pin = self._local_lan_pin + self._local_lan_pin
+        full_lan_pin = link.lan_pin + link.lan_pin
         frame = build_business_packet(serial, json_str, full_lan_pin)
 
-        _LOGGER.debug("局域网下发控制 %s: %s", did, json_str)
-        with self._local_lock:
-            self._local_socket.sendall(frame)
+        _LOGGER.debug(
+            "局域网下发控制 %s%s: %s", did, "（老设备单键）" if old_device else "", json_str
+        )
+        with link.lock:
+            if link.socket is None:
+                raise RuntimeError(f"设备 {did} 的局域网连接已关闭")
+            link.socket.sendall(frame)
 
         return {"status": "sent", "mid": mid}
 
     def query_local_device(self, did: str, timeout: float = 5.0) -> Dict[str, Any]:
-        """通过局域网查询设备状态。
+        """通过局域网查询设备状态（只读该设备自己的链路）。
 
         Returns:
             设备状态字典，失败时返回 {"error": "reason"}
         """
-        if not self._local_socket or not self._local_lan_pin:
-            return {"error": "请先调用 connect_local()"}
+        link = self.local_link(did)
+        if link is None:
+            return {"error": "no local link（请先调用 connect_local()）"}
 
         mid = str(int(time.time() * 1000))
         json_obj = {
@@ -982,18 +1253,20 @@ class WanjialeProtocol:
         json_str = json.dumps(json_obj, separators=(",", ":"))
 
         serial = self._next_serial()
-        full_lan_pin = self._local_lan_pin + self._local_lan_pin
+        full_lan_pin = link.lan_pin + link.lan_pin
         frame = build_business_packet(serial, json_str, full_lan_pin)
 
-        with self._local_lock:
-            self._local_socket.sendall(frame)
+        with link.lock:
+            if link.socket is None:
+                return {"error": "local link closed"}
+            link.socket.sendall(frame)
 
             start_time = time.time()
             while time.time() - start_time < timeout:
                 remaining = timeout - (time.time() - start_time)
-                self._local_socket.settimeout(max(remaining, 1.0))
+                link.socket.settimeout(max(remaining, 1.0))
                 try:
-                    raw = self._recv_local_frame()
+                    raw = self._recv_local_frame(link)
                     if raw is None:
                         continue
                     result = self._parse_business_response(raw, full_lan_pin)
@@ -1004,7 +1277,7 @@ class WanjialeProtocol:
                     break
                 except socket.timeout:
                     continue
-                except Exception:
+                except Exception:  # noqa: BLE001
                     continue
 
         return {"error": "timeout"}
@@ -1058,12 +1331,16 @@ class WanjialeProtocol:
         except (socket.timeout, ConnectionError):
             return None
         except RuntimeError:
+            _LOGGER.debug("_recv_frame: 帧头长度异常", exc_info=True)
             return None
 
     def _parse_business_response(self, raw: bytes, encrypt_key: str) -> Dict[str, Any]:
         """解析业务消息响应。
 
         加密体结构：serial(2 bytes) + JSON_content
+
+        返回前经 `normalize_business_payload` 归一化，保证调用方拿到的
+        一定是「`as` 字典 + `fids` 数组」，无需关心老设备形态。
         """
         if len(raw) < 7:
             return {"error": "响应长度不足"}
@@ -1079,6 +1356,10 @@ class WanjialeProtocol:
 
         encrypted = raw[enc_start : enc_start + enc_len]
 
+        if not encrypted:
+            # 设备与服务端都会发不带加密体的空帧（无业务数据），交由调用方继续等待
+            return {"error": "空报文"}
+
         try:
             key = encrypt_key[:16].encode("utf-8")
             iv = encrypt_key[16:32].encode("utf-8")
@@ -1088,8 +1369,9 @@ class WanjialeProtocol:
             json_str = decrypted[2:].decode("utf-8", errors="ignore")
             if not json_str.strip():
                 return {"status": "ok"}
-            return json.loads(json_str)
+            return normalize_business_payload(json.loads(json_str))
         except Exception as e:  # noqa: BLE001
+            _LOGGER.warning("业务响应解析失败：%s", e, exc_info=True)
             return {"error": str(e)}
 
     # ---- 心跳 ----
@@ -1111,23 +1393,30 @@ class WanjialeProtocol:
                 return False
 
     def _ensure_connected(self) -> None:
-        """确保长连接可用（断线自动重连，静默失败）。"""
+        """确保长连接可用（断线自动重连）。"""
         if self._socket is not None:
             if time.time() - self._last_heartbeat > self._heartbeat_interval * 0.8:
                 if not self.send_heartbeat():
-                    _LOGGER.debug("心跳失败")
+                    _LOGGER.warning("长连接心跳失败，重连中")
                     self.close_server()
             else:
                 return
 
         if self._socket is None:
+            err: Optional[Exception] = None
             try:
-                if not self.connect_server():
-                    _LOGGER.debug("重连长连接失败")
-                    self.close_server()
-            except Exception:
-                _LOGGER.debug("重连长连接异常", exc_info=True)
+                ok = self.connect_server()
+            except Exception as exc:  # noqa: BLE001
+                ok, err = False, exc
+            if not ok:
+                # 云端不可用会一直持续到恢复为止，故只在首次进入失败态时记录
+                if not self._cloud_down:
+                    self._cloud_down = True
+                    _LOGGER.error("云端长连接不可用，之后每次刷新都会重试", exc_info=err)
                 self.close_server()
+            elif self._cloud_down:
+                self._cloud_down = False
+                _LOGGER.info("云端长连接已恢复")
 
     # ---- 查询设备状态 ----
     def query_device(self, did: str, timeout: Optional[float] = None, accept_post: bool = False) -> Dict[str, Any]:
@@ -1164,6 +1453,7 @@ class WanjialeProtocol:
             _LOGGER.debug("query_device: 已发送查询 mid=%s", mid)
 
             start_time = time.time()
+            read_error_logged = False
             while time.time() - start_time < timeout:
                 remaining = timeout - (time.time() - start_time)
                 self._socket.settimeout(max(remaining, 1.0))
@@ -1177,7 +1467,11 @@ class WanjialeProtocol:
                     if isinstance(result, dict) and result.get("error"):
                         continue
                     if accept_post and isinstance(result, dict) and result.get("cmd") == "post" and result.get("as"):
-                        return result
+                        # 整个账号共用一条云端长连接，push 帧可能来自别的设备，
+                        # 必须确认 from 是本次查询的设备，否则会把 B 的状态当成 A 的。
+                        if str(result.get("from") or "") == did:
+                            return result
+                        continue
                     resp_mid = result.get("mid") if isinstance(result, dict) else None
                     if resp_mid == mid:
                         return result
@@ -1186,7 +1480,10 @@ class WanjialeProtocol:
                 except socket.timeout:
                     continue
                 except Exception:
-                    _LOGGER.debug("query_device: 读取异常", exc_info=True)
+                    # 只报第一次：同一轮里同样的错会被反复撞到，堆栈留一份即可
+                    if not read_error_logged:
+                        read_error_logged = True
+                        _LOGGER.warning("query_device: 读取响应异常", exc_info=True)
                     continue
 
         raise TimeoutError(f"query_device 超时: 未收到 mid={mid} 的响应")

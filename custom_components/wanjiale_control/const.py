@@ -16,13 +16,10 @@ CONF_FEATURE_FORCE_OFF = "feature_force_off"           # 强制关闭的功能�
 # 轮询间隔（秒）
 DEFAULT_SCAN_INTERVAL = 10
 
-# 需要注册的实体平台
-PLATFORMS = (
-    "water_heater",
-    "switch",
-    "number",
-    "select",
-    "button",
+# 核心最小平台集：通用只读设备（未注册品类）也要落在这两个平台上方能"可见"，
+# 因此无论注册了哪些品类都必须转发它们。
+# 各品类自己需要的平台由 `registry.all_platforms()` 求并集（见 __init__.py）。
+CORE_PLATFORMS = (
     "sensor",
     "binary_sensor",
 )

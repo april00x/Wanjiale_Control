@@ -11,7 +11,7 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .api import WanjialeApi
-from .capabilities import OVERRIDE_OFF, OVERRIDE_ON
+from .capabilities import OVERRIDE_OFF, OVERRIDE_ON, ensure_plugins
 from .const import (
     CONF_ENABLE_CONTROL_RIGHTS,
     CONF_FEATURE_FORCE_OFF,
@@ -19,10 +19,11 @@ from .const import (
     CONF_IMEI,
     CONF_PASSWORD,
     CONF_USERNAME,
+    CORE_PLATFORMS,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
-    PLATFORMS,
 )
+from . import registry
 from .protocol import WanjialeProtocol
 
 _LOGGER = logging.getLogger(__name__)
@@ -36,6 +37,16 @@ def build_feature_overrides(options: Dict[str, Any]) -> Dict[str, str]:
     for name in options.get(CONF_FEATURE_FORCE_ON) or []:
         overrides[str(name)] = OVERRIDE_ON
     return overrides
+
+
+def platforms_for_entry() -> tuple:
+    """本次要转发的实体平台 = 各品类声明的平台 ∪ 核心最小平台。
+
+    必须在转发前算好：HA 要求平台清单在加载时确定，卸载要用同一份清单。
+    新增品类只需在自己插件里声明 `platforms`，这里自动求并集 —— 核心无需改动。
+    """
+    ensure_plugins()
+    return tuple(sorted(set(CORE_PLATFORMS) | set(registry.all_platforms())))
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -57,16 +68,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # 登录 + 加载设备在 executor 中完成（同步 socket）
         await hass.async_add_executor_job(api.login)
         await hass.async_add_executor_job(api.load_devices)
-        _LOGGER.debug("已加载 %d 台设备", len(api.devices))
+        _LOGGER.info("已加载 %d 台设备", len(api.devices))
         # 尝试建立长连接（可选，失败不影响启动）
         try:
             await hass.async_add_executor_job(api.connect_server)
         except Exception:  # noqa: BLE001
-            _LOGGER.warning("建立长连接失败，设备状态与控制可能不可用")
+            _LOGGER.warning("建立长连接失败，设备状态与控制可能不可用", exc_info=True)
     except Exception as exc:  # noqa: BLE001
-        # 重试日志交给 ConfigEntryNotReady 内置逻辑（HA 按 debug 记录并透传到 UI），
-        # 此处不再自行打非 debug 日志，避免每次自动重试都刷一条 ERROR
-        _LOGGER.debug("初始化失败，交由 Home Assistant 自动重试", exc_info=True)
+        _LOGGER.warning("初始化失败，交由 Home Assistant 自动重试", exc_info=True)
         raise ConfigEntryNotReady(f"wanjiale_control: {exc}") from exc
 
     async def _do_refresh() -> WanjialeApi:
@@ -86,30 +95,38 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # 依据「内置能力表 + 实机点位 + 选项覆盖」定稿功能集合，之后再创建实体
     await hass.async_add_executor_job(api.finalize_features)
 
+    # 平台集合 = 各品类声明的平台 ∪ 核心最小平台。
+    # 必须在转发前算好：HA 要求平台清单在加载时确定，且卸载要用同一份清单。
+    platforms = platforms_for_entry()
+    _LOGGER.debug("本次加载的实体平台：%s", ", ".join(platforms))
+
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "api": api,
         "coordinator": coordinator,
+        "platforms": platforms,
     }
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await hass.config_entries.async_forward_entry_setups(entry, platforms)
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     return True
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """选项变更后重载集成（功能集合需要重新计算）。"""
-    _LOGGER.debug("选项已变更，重载集成以重新计算功能集合")
+    _LOGGER.info("选项已变更，重载集成以重新计算功能集合")
     await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """卸载集成时关闭长连接与局域网连接。"""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
+    # 用加载时的同一份平台清单卸载（HA 要求前后一致）
+    platforms = entry_data.get("platforms") or CORE_PLATFORMS
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
     if unload_ok:
-        entry_data = hass.data[DOMAIN].get(entry.entry_id, {})
         api: WanjialeApi | None = entry_data.get("api")
         if api:
             await hass.async_add_executor_job(api.close)
         hass.data[DOMAIN].pop(entry.entry_id, None)
-        _LOGGER.debug("集成已卸载")
+        _LOGGER.info("集成已卸载")
     return unload_ok
