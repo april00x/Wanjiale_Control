@@ -65,12 +65,13 @@ class WanjialeWaterHeaterEntity(WanjialeDiagnosticEntity, WaterHeaterEntity):
     # ------------------------------------------------------------------
     @property
     def supported_features(self) -> WaterHeaterEntityFeature:
-        features = (
-            WaterHeaterEntityFeature.ON_OFF
-            | WaterHeaterEntityFeature.TARGET_TEMPERATURE
-        )
-        # 「模式切换」这一 flag 同时表示温度可设与模式可切，故再加一层角色判定：
-        # 机型模板没有模式表时不暴露模式选择，避免给出空的假下拉框。
+        features = WaterHeaterEntityFeature.ON_OFF
+        # 设定温度：由角色声明「该机型是否可设温」（未实现该成员者按 True 处理，
+        # 既有行为不变）。008 的温控点随机型变、个别机型没有 `points.temp`，
+        # 此时不暴露温度控件，避免出现「点了才报『该机型不支持设定温度』」的假控件。
+        if getattr(self.role, "supports_target_temperature", True):
+            features |= WaterHeaterEntityFeature.TARGET_TEMPERATURE
+        # 模式切换：机型模板没有模式表时不暴露模式选择，避免给出空的假下拉框。
         # 未实现该成员的角色按 True 处理。
         if self._device.has_feature("模式切换") and getattr(
             self.role, "supports_mode_selection", True

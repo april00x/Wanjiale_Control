@@ -51,6 +51,15 @@ class WaterHeaterProto(Protocol):
     模板模式表为空时不暴露模式选择。
     """
 
+    supports_target_temperature: bool
+    """该角色是否对外暴露「设定温度」（`water_heater` 的 `TARGET_TEMPERATURE`）。
+
+    未实现者按 `True` 处理（平台层用 `getattr(..., True)` 兜底），保证既有行为不变；
+    `WanjialeDevice` 类级默认 `True`，008 覆盖为属性「该机型是否有点位 `points.temp`」
+    —— 008 的温控点**随机型变**，个别机型可能没有，此时不应出现
+    「点了才报『该机型不支持设定温度』」的假控件。
+    """
+
     # ---- 状态（属性） ----
     @property
     def is_power_on(self) -> Optional[bool]: ...

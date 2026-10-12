@@ -20,6 +20,7 @@ import time
 from typing import Any, Dict, List, Optional, Set, Type
 
 from . import features_001 as f001
+from . import features_008 as f008
 from . import registry
 from .capabilities import (
     DeviceCapabilities,
@@ -50,7 +51,7 @@ def _short_did(did: Any) -> str:
 # ======================================================================
 # 跨品类系统级常量
 # ----------------------------------------------------------------------
-# 多端操作权（247/248）是 001 / 002 / 008 共用的跨品类机制，
+# 多端操作权（247/248）是 001 / 002 共用的跨品类机制，
 # 必须由核心层实现、不能留在某个品类的子类里，因此点位于此处定义。
 # 注：features_001 的字典里也有同名常量（值相同），那是 001 侧的命令编码字典。
 # ======================================================================
@@ -77,6 +78,8 @@ def _resolve_plugin(raw: Dict[str, Any], caps: DeviceCapabilities) -> Optional[C
     （`caps.matched`）则用认领它的品类（`caps.product`）；若命中品类把该机型声明为
     只读（`plugin.readonly_models` 含 `caps.key`）则返回 `None` —— 这类机型确属本产品码，
     但活动协议是另一路体系（001 的 OYY/HPZ 属 101+ 第二路体系），按本品位下发会误控；
+    若命中品类的 `requires_model_entry` 为 True 而设备未命中机型表
+    （`caps.model_points` 为空）也返回 `None` —— 防「用空点位建出可下发的主实体」；
     都不命中返回 `None`（未注册品类）。
 
     返回 `None` 时，`_resolve_device_class` 回落通用只读基类，平台侧表现为
@@ -93,6 +96,16 @@ def _resolve_plugin(raw: Dict[str, Any], caps: DeviceCapabilities) -> Optional[C
         _LOGGER.info(
             "机型 %s 属品类 %s 声明的只读机型，按通用只读设备处理（不认领）",
             caps.key, plugin.product,
+        )
+        return None
+    if plugin.requires_model_entry and not caps.model_points:
+        # 点位全在机型表里的品类（如 008）：没命中机型表就不认领，否则会用空点位
+        # 建出「可开机」的主实体并允许下发。日志对齐 readonly_models 拦截路径，
+        # 便于排查「设备在线却只读」。
+        _LOGGER.info(
+            "设备 firm=%s model=%s modelId=%s 未命中品类 %s 的机型表"
+            "（requires_model_entry），按通用只读设备处理（不认领）",
+            raw.get("firm"), raw.get("model"), raw.get("modelId"), plugin.product,
         )
         return None
     return plugin
@@ -235,6 +248,7 @@ class WanjialeDevice:
             "firm": self.firm,
             "family": self.caps.family,
             "form": self.caps.form,
+            "points": self.caps.model_points,
         }
 
     # ------------------------------------------------------------------
@@ -253,6 +267,14 @@ class WanjialeDevice:
     类级默认 `True` → 未实现该成员的角色行为不变（`isinstance` 判定不因契约新增成员
     而变严）；001 的燃气热水器在子类覆盖为属性，按「机型模板是否定义了模式表」动态给出
     （模板模式表为空 → 不暴露）。
+    """
+
+    supports_target_temperature: bool = True
+    """该角色是否对外暴露「设定温度」（`WaterHeaterProto` 的成员之一）。
+
+    类级默认 `True` → 未实现该成员的角色行为不变；008 覆盖为属性
+    「该机型是否有点位 `points.temp`」——温控点随机型变，缺点位时不暴露温度控件，
+    避免出现「点了才报『该机型不支持设定温度』」的假控件。
     """
 
     def role_views(self) -> List[Any]:
@@ -743,6 +765,175 @@ class WanjialeGasWaterHeater(WanjialeDevice):
     # ------------------------------------------------------------------
     def query_status(self) -> Dict[str, Any]:
         return self._protocol.query_device(self.did)
+
+
+# ======================================================================
+# 电热水器（008 产品线）
+# ======================================================================
+class WanjialeElectricWaterHeater(WanjialeDevice):
+    """万家乐电热水器（008 产品线）。
+
+    点位**全部取自 `self.caps.model_points`**（机型级，由 `capability_008.json` 的
+    `devices[*].points` 经 C1/C2 透传），本类不出现任何裸 dvid：
+    控制一律经 `plugin.encode_value()`，状态一律来自 `features_008.parse_state()`。
+
+    与 001 的差异：008 无成对复合包（单点直写绝对值）；模式表直接取机型能力表；
+    温度点独立于模式点，故 `set_temperature` 按「机型是否有点位」判定而非「模式切换」。
+    """
+
+    platform = "water_heater"
+    category_cn = "电热水器"
+
+    # ------------------------------------------------------------------
+    # 机型点位视图
+    # ------------------------------------------------------------------
+    def _points(self) -> Dict[str, Any]:
+        return self.caps.model_points or {}
+
+    def _point(self, name: str) -> Dict[str, Any]:
+        item = self._points().get(name)
+        return item if isinstance(item, dict) else {}
+
+    def _aux_item(self, feature: str) -> Optional[Dict[str, Any]]:
+        for item in self._points().get("aux") or []:
+            if isinstance(item, dict) and item.get("feature") == feature:
+                return item
+        return None
+
+    # ------------------------------------------------------------------
+    # 状态（属性，`WaterHeaterProto` 契约）
+    # ------------------------------------------------------------------
+    @property
+    def is_power_on(self) -> Optional[bool]:
+        return self.parsed.get("power_on")
+
+    @property
+    def current_temperature(self) -> Optional[int]:
+        """当前水温（机型级 `points.curTemp`）。"""
+        return self.parsed.get("current_temp")
+
+    @property
+    def target_temperature(self) -> Optional[int]:
+        """设定温度（008 的下发值即绝对值 ℃，无需反算）。"""
+        return self.parsed.get("target_temp")
+
+    @property
+    def current_mode(self) -> Optional[int]:
+        return self.parsed.get("mode")
+
+    @property
+    def hot_water(self) -> Optional[int]:
+        """当前热水量（%）。"""
+        return self.parsed.get("hot_water")
+
+    # ------------------------------------------------------------------
+    # 元信息
+    # ------------------------------------------------------------------
+    def mode_names(self) -> Dict[int, str]:
+        """模式号 → 名称：直接取机型能力表（无需 001 的「模板 ∪ 实机上报」合并）。"""
+        return dict(self.caps.template_modes)
+
+    @property
+    def supports_mode_selection(self) -> bool:
+        """无模式表则不暴露假下拉框（与 001 一致）。"""
+        return bool(self.caps.template_modes)
+
+    @property
+    def supports_target_temperature(self) -> bool:
+        """该机型是否可设温 —— 由机型点位决定（008 没有独立的「温度」能力位）。
+
+        温控点随机型变，缺点位时不暴露温度控件，避免出现「点了才报
+        『该机型不支持设定温度』」的假控件（见实施方案 §九-12）。
+        """
+        return bool(self._point("temp"))
+
+    def min_temp(self) -> float:
+        return float(self._point("temp").get("min", 30))
+
+    def max_temp(self) -> float:
+        return float(self._point("temp").get("max", 75))
+
+    @property
+    def fault_code(self) -> Optional[int]:
+        return self.parsed.get("fault")
+
+    # ------------------------------------------------------------------
+    # 控制
+    # ------------------------------------------------------------------
+    def _frame(self, action: str, **params: Any) -> Dict[str, str]:
+        """委托品类插件编码（值计算的唯一实现），并补上本机型点位。"""
+        plugin = self._require_plugin()
+        params.setdefault("points", self._points())
+        return plugin.encode_value(action, **params)
+
+    def set_power(self, on: bool) -> None:
+        self._ensure("开关机")
+        frame = self._frame("power", on=bool(on))
+        self._send(frame)
+        self.optimistic(frame)
+
+    def turn_on(self) -> None:
+        self.set_power(True)
+
+    def turn_off(self) -> None:
+        self.set_power(False)
+
+    def set_temperature(self, temperature: int) -> None:
+        """下发**绝对值**温度（按机型 `points.temp.min/max` 钳位）。
+
+        门控用 `_ensure("")`：只校验「品类已收录 + 设备无故障」，不做功能门控 ——
+        008 没有独立的「温度」能力位，而 `模式切换` 只表示模式点存在；
+        是否可以设温由「该机型是否有点位」决定，避免把两个概念绑在一起。
+        """
+        if not self._point("temp"):
+            raise WanjialeControlError("该机型不支持设定温度")
+        self._ensure("")
+        frame = self._frame("temperature", value=int(temperature))
+        self._send(frame)
+        self.optimistic(frame)
+
+    def set_mode(self, mode: int) -> None:
+        self._ensure("模式切换")
+        frame = self._frame("mode", mode=int(mode))
+        self._send(frame)
+        self.optimistic(frame)
+
+    def set_aux(self, feature: str, on: bool) -> None:
+        """辅助开关：按机型 aux 列表派发（`set_<key>` 方法由下方动态生成）。"""
+        item = self._aux_item(feature)
+        if item is None:
+            raise WanjialeControlError(f"该机型不支持「{feature}」")
+        self._ensure(feature)
+        value = int(item.get("on", 1) if on else item.get("off", 0))
+        frame = self._frame("toggle", dpid=item.get("dpid"), value=value)
+        self._send(frame)
+        self.optimistic(frame)
+
+    # ------------------------------------------------------------------
+    # 查询
+    # ------------------------------------------------------------------
+    def query_status(self) -> Dict[str, Any]:
+        return self._protocol.query_device(self.did)
+
+
+def _make_aux_setter(feature: str, key: str):
+    """生成 `set_<key>(on)`（switch spec 的 `method` 指向它）。"""
+
+    def setter(self: WanjialeElectricWaterHeater, on: bool) -> None:
+        self.set_aux(feature, bool(on))
+
+    setter.__name__ = f"set_{key}"
+    setter.__qualname__ = f"WanjialeElectricWaterHeater.set_{key}"
+    setter.__doc__ = f"辅助开关「{feature}」（机型级 dpid，见能力表 `points.aux`）。"
+    return setter
+
+
+# 按 features_008 的「键 → 规范功能名」表逐个绑定，使 `hasattr(role, "set_<key>")`
+# 在 switch 平台判定时成立（平台只调方法、不认品类）。
+for _aux_key, _aux_feature in f008.AUX_KEY_FEATURE.items():
+    if not hasattr(WanjialeElectricWaterHeater, f"set_{_aux_key}"):
+        setattr(WanjialeElectricWaterHeater, f"set_{_aux_key}",
+                _make_aux_setter(_aux_feature, _aux_key))
 
 
 # ======================================================================

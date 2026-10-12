@@ -73,9 +73,16 @@ def _device_class(name: Optional[str]) -> Optional[SensorDeviceClass]:
 
 
 def _has_fault_point(dev: WanjialeDevice, plugin) -> bool:
-    """该设备是否上报了插件声明的故障点位。"""
-    declared = (plugin.fault_points or {}).get("device") or ()
-    return any(dev.has_point(str(point)) for point in declared)
+    """该设备能否产出故障。
+
+    - 插件声明了云端来源（`fault_points["cloud"]`，如 `"fids"`）：故障随云端下发、
+      恒可产出（008 多数机型正是这种：无设备故障点，故障只在 `fids` 里）；
+    - 否则看设备是否上报了声明的设备故障点位（001 走这条）。
+    """
+    declared = plugin.fault_points or {}
+    if declared.get("cloud"):
+        return True
+    return any(dev.has_point(str(point)) for point in (declared.get("device") or ()))
 
 
 async def async_setup_entry(

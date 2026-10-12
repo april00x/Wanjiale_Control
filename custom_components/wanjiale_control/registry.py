@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, FrozenSet, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, FrozenSet, Mapping, Optional, Tuple
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -73,10 +73,13 @@ class CategoryPlugin:
     留空表示「始终使用 base_points」。该语义必须由插件声明，核心层不得写死家族名。
     """
 
-    specs: Mapping[str, Sequence[Any]] = field(default_factory=dict)
+    specs: Mapping[str, Any] = field(default_factory=dict)
     """平台到 spec 表的映射。spec 表放品类目录，平台模块只做通用渲染，
     因此新增品类无需改动任何平台模块。
-    例：{"switch": (SwitchSpec(...), ...), "select": (SelectSpec(...), ...)}
+
+    值可为**静态序列**（如 001：`{"switch": (SwitchSpec(...), ...)}`），
+    也可为**按设备生成的函数** `Callable[[device], Sequence[Spec]]`
+    （如 008：实体名单与 dpid 随机型变，静态表装不下）。
     """
 
     always_on_features: FrozenSet[str] = frozenset()
@@ -103,6 +106,16 @@ class CategoryPlugin:
 
     control_rights: bool = False
     """是否启用 247/248 多端操作权（001/002 为 True）。"""
+
+    requires_model_entry: bool = False
+    """是否要求设备**命中机型表**才可被认领（默认 False，旧插件不受影响）。
+
+    置 True 时，`api._resolve_plugin` 在 `caps.model_points` 为空时返回 None
+    （回落通用只读）——008 的点位全在机型表里，设备 `firm` 缺失 / 机型未收录时
+    主键拼不出（`caps.key=None`），`readonly_models` 也拦不住，若不拦就会用空点位
+    建出「可开机」的主实体并允许下发。与 `readonly_models` 互补：
+    后者拦「已收录但主动判只读」，本字段拦「根本没进表」。
+    """
 
     contract_version: int = CONTRACT_VERSION
 
@@ -168,19 +181,51 @@ def registered() -> Mapping[str, CategoryPlugin]:
     return dict(_REGISTRY)
 
 
+def _resolve_specs(declared: Any, device: Any) -> Tuple[Any, ...]:
+    """把 spec 表声明解析成元组。
+
+    `declared` 可为静态 `Sequence[Spec]`（如 001），也可为
+    `Callable[[device], Sequence[Spec]]`（如 008：实体名单与 dpid 随机型变）。
+    函数式声明必须带 `device` 才能解析；无 `device` 或函数抛错时一律退化为空表，
+    绝不向外抛（平台模块不应因此起不来）。
+    """
+    if declared is None:
+        return ()
+    if callable(declared):
+        if device is None:
+            return ()
+        try:
+            return tuple(declared(device) or ())
+        except Exception:  # noqa: BLE001
+            _LOGGER.warning(
+                "按设备生成 spec 表失败，按空表处理（device=%s）",
+                getattr(device, "did", "?"), exc_info=True,
+            )
+            return ()
+    return tuple(declared)
+
+
 def specs_for_platform(plugin: Optional[CategoryPlugin], platform: str) -> Tuple[Any, ...]:
-    """取某插件在某平台上的 spec 表。"""
+    """取某插件在某平台上的**静态** spec 表。
+
+    函数式声明（`Callable[[device], …]`）需要设备上下文，请改走 `platform_specs()`；
+    此处无设备可传，故函数式声明一律返回空表。
+    """
     if plugin is None:
         return ()
-    return tuple((plugin.specs or {}).get(platform) or ())
+    return _resolve_specs((plugin.specs or {}).get(platform), None)
 
 
 def platform_specs(device: Any, platform: str) -> Tuple[Any, ...]:
     """平台模块的取值入口：`registry.platform_specs(dev, "switch")`。
 
-    平台模块因此不认识任何品类，只做「把 spec 渲染成实体」。
+    平台模块因此不认识任何品类，只做「把 spec 渲染成实体」；
+    spec 表既可为静态序列，也可为按设备生成的函数（见 `_resolve_specs`）。
     """
-    return specs_for_platform(getattr(device, "plugin", None), platform)
+    plugin = getattr(device, "plugin", None)
+    if plugin is None:
+        return ()
+    return _resolve_specs((plugin.specs or {}).get(platform), device)
 
 
 def clear() -> None:

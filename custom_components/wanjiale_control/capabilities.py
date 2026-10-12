@@ -215,6 +215,13 @@ class DeviceCapabilities:
     template_modes: Dict[int, str] = field(default_factory=dict)
     source: str = "未收录"
 
+    model_points: Dict[str, Any] = field(default_factory=dict)
+    """机型级点位表：能力表 `devices[*].points` 原样透传（核心层只透传、不解读）。
+
+    008 等品类的点位随机型变（开关/模式/温度/状态各有不同 dpid），必须随能力表一起
+    下发到设备对象，供品类 `parse_state` 按机型取点。留空 → 001/002 行为不变。
+    """
+
     @property
     def matched(self) -> bool:
         """是否命中内置能力表。"""
@@ -337,6 +344,7 @@ def resolve(
         family=entry.get("family"),
         form=entry.get("form"),
         dvid_count=entry.get("dvidCount"),
+        model_points=dict(entry.get("points") or {}),
         template_features=template,
         template_modes=modes,
         source="内置能力表",
