@@ -2,10 +2,10 @@
 
 与 001 的静态表不同：008 的实体**名单本身**随机型变（不同机型开关不同、dpid 与
 中文标签都不同），静态表装不下，故 `PLATFORM_SPECS` 的值是 `Callable[[device], Tuple[Spec, ...]]`
-（由核心的 `registry._resolve_specs()` 解析，见实施方案 C3）。
+（由核心的 `registry._resolve_specs()` 解析）。
 
 主实体（`water_heater`）不走 spec，由 `WaterHeaterProto` 属性驱动（与 001 一致）。
-故障明细走 `WanjialeFaultSensor`（由 C4 判定创建，非 spec 驱动）。
+故障明细走 `WanjialeFaultSensor`（由核心层判定创建，非 spec 驱动）。
 
 点位一律取 `device.caps.model_points`（= 能力表 `devices[*].points`），
 不做任何跨机型推断。
@@ -70,10 +70,14 @@ def switch_specs(device: Any) -> Tuple[SwitchSpec, ...]:
 
 
 def sensor_specs(device: Any) -> Tuple[SensorSpec, ...]:
-    """当前热水量 / 当前水温，dpid 取机型实际点位。
+    """当前热水量 / 当前水温 / 运行状态，dpid 取机型实际点位。
 
     实体创建仍由 `dev.has_point(spec.dvid)` 门控：008 的 `base_points` 为空，
-    点位集合只含**实测**点位，故设备首轮上报后实体才出现（实施方案 §4.5，已接受）。
+    点位集合只含**实测**点位，故设备首轮上报后实体才出现。
+
+    「运行状态」是文本型（`status_text` = 加热中/保温中/待机中，随机型变），
+    故意不声明 `device_class`：HA 的 enum 类要求状态值必须落在 `options` 里，而
+    `SensorSpec` 没有 `options` 字段（要动 001/002/008 共用的核心文件），收益不值。
     """
     pts = _points(device)
     specs = []
@@ -96,18 +100,35 @@ def sensor_specs(device: Any) -> Tuple[SensorSpec, ...]:
                 precision=1,
             )
         )
+    run = (pts.get("status") or {}).get("dpid")
+    if run:
+        specs.append(
+            SensorSpec(
+                key="run_status", name="运行状态", dvid=str(run), value_key="status_text",
+                icon="mdi:clipboard-text-outline",
+            )
+        )
     return tuple(specs)
 
 
 def binary_sensor_specs(device: Any) -> Tuple[BinarySensorSpec, ...]:
-    """加热中 / 保温中（状态点）。
+    """加热中 / 保温中（同一个状态点派生的两条互斥二元状态）。
 
-    **本轮返回空表**：S0 核对确认 `per_model.csv` 无 H5 状态语义，状态点真源是各机型
-    `js/index.js` 的 `statustip()`（随机型变、取值映射亦机型级），无法从数据资产机械派生
-    → 按「无证据则留空」不产出（实施方案 §2.5-C、§九-10）。
-    将来若逐机型确认了 `statustip()` 入参，把状态点写进能力表 `points.status` 并在此返回即可。
+    状态点来自机型级 `points.status`；「其余」档（待机）不单独出实体
+    ——它等于这两条都为 off，关机则由主实体的 on/off 表达。
+
+    缺点位的机型（CKQ/AVX/DXV/GOX）返回空表；
+    只读机型的插件为 None，平台侧不会走到这里。
     """
-    return ()
+    status = _points(device).get("status") or {}
+    dpid = str(status.get("dpid") or "")
+    if not dpid:
+        return ()
+    return (
+        BinarySensorSpec("heating", "加热中", dpid, "heating", "mdi:fire", "running"),
+        BinarySensorSpec("keeping_warm", "保温中", dpid, "keeping_warm",
+                         "mdi:thermometer", "running"),
+    )
 
 
 # 平台名 → 「按设备生成 spec 表」的函数（核心 `registry._resolve_specs()` 会传入 device）

@@ -7,8 +7,8 @@
 
 **本文件不含任何全局 dpid 常量**：008 的开关/模式/温度/热水量/水温/故障/辅助开关点位
 全部随机型变，一律从 `profile["points"]` 取（由 `capabilities.resolve()` 从
-`capability_008.json` 的 `devices[*].points` 透传，见实施方案 C1/C2）。
-跨机型推断是红线：同一 dpid 在不同机型语义互斥（报告 §8-C6）。
+`capability_008.json` 的 `devices[*].points` 透传）。
+跨机型推断是红线：同一 dpid 在不同机型语义可能互斥。
 
 `probe_dvids` 一律留空：008 的功能位由能力表 `flags` 决定，不能用 dpid 并集探测。
 """
@@ -19,8 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 CATEGORY = "电热水器"
 PRODUCT = "008"
 
-# 与 `协议资源抓取工具/build_capability_008.py` 的 `_FEATURE_KEY` 保持一一对应：
-# 键是 `set_<key>` 的方法名后缀（见 api.WanjialeElectricWaterHeater 的动态派发）。
+# 键是 `set_<key>` 方法名后缀，与 capability_008.json 里 aux 的 key 对应。
 AUX_KEY_FEATURE: Dict[str, str] = {
     "yuyue": "预约",
     "wudianxi": "无电洗",
@@ -139,7 +138,7 @@ def parse_state(
         if value is not None:
             out["mode"] = value
 
-    # ---- 设定温度（008 的写入值即绝对值 ℃，见实施方案 §4.3） ----
+    # ---- 设定温度（写入值即绝对温度值） ----
     temp_pt = pts.get("temp") or {}
     dpid = str(temp_pt.get("dpid") or "")
     if dpid and dpid in state:
@@ -149,14 +148,15 @@ def parse_state(
 
     # ---- 运行状态（机型级 `points.status`；仅真机实测确认的机型有点） ----
     # `status` 保留原始值，`status_text` 取机型 map；加热 / 保温两档由标量比对给出，
-    # 取值映射随机型变（报告 §8-C6：OKS/ACB 为 1/2，GRO 为 2/3），故不在本层写死。
+    # 取值映射随机型变（OKS/ACB 为 1/2，GRO 为 2/3），故不在本层写死。
     status_pt = pts.get("status") or {}
     dpid = str(status_pt.get("dpid") or "")
     if dpid and dpid in state:
         value = _int(state[dpid])
         if value is not None:
             out["status"] = value
-            label = (status_pt.get("map") or {}).get(str(value))
+            # map 未命中（如「其余=待机」那一档）时用机型登记的 other 文案兜底
+            label = (status_pt.get("map") or {}).get(str(value)) or status_pt.get("other")
             if label:
                 out["status_text"] = str(label)
             heat_value = _int(status_pt.get("heating"))
@@ -199,7 +199,7 @@ def parse_state(
         on_value = _int(item.get("on"))
         out[f"{key}_on"] = value == (1 if on_value is None else on_value)
 
-    # ---- 故障：云端 fids 优先（H5 无设备故障点，见实施方案 §2.5-D） ----
+    # ---- 故障：只走云端 fids（H5 页面没有设备故障点） ----
     ids: List[int] = []
     for raw in (fids or []):
         value = _int(raw)
@@ -211,7 +211,7 @@ def parse_state(
             (profile or {}).get("key") if isinstance(profile, dict) else None, ids[0]
         ) or f"E{ids[0]}"
         out["fault_list"] = ids
-    # fids 为空 → 不输出 fault（保持「无来源即未知」的契约；见 §5.2 映射表）
+    # fids 为空 → 不输出 fault（保持「无来源即未知」）
 
     return out
 
@@ -252,7 +252,7 @@ def encode_value(action: str, **params: Any) -> Dict[str, str]:
         value = item.get("on", 1) if on else item.get("off", 0)
         frame = {str(item["dpid"]): str(int(value))}
         if on:
-            # 部分机型开机需多发一帧（报告 §11.2：OKS 开机 = 101=1 且 102=1）
+            # 部分机型开机需多发一帧（如 OKS 开机 = 101=1 且 102=1）
             also = item.get("onAlso") or {}
             if isinstance(also, dict):
                 frame.update({str(k): str(int(v)) for k, v in also.items()})

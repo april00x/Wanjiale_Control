@@ -439,7 +439,7 @@ class WanjialeDevice:
     def _before_control(self) -> None:
         """控制前置动作：抢占多端操作权（247/248）。
 
-        操作权是跨品类系统级机制（001 / 002 / 008 共用），实现放基类，由
+        操作权是跨品类系统级机制（目前 001 / 002 在用），实现放基类，由
         `plugin.control_rights` 决定该品类是否使用它。
 
         仅当同时满足以下条件才发送（避免每次控制都多发 3 帧）：
@@ -774,7 +774,7 @@ class WanjialeElectricWaterHeater(WanjialeDevice):
     """万家乐电热水器（008 产品线）。
 
     点位**全部取自 `self.caps.model_points`**（机型级，由 `capability_008.json` 的
-    `devices[*].points` 经 C1/C2 透传），本类不出现任何裸 dvid：
+    `devices[*].points` 透传），本类不出现任何裸 dvid：
     控制一律经 `plugin.encode_value()`，状态一律来自 `features_008.parse_state()`。
 
     与 001 的差异：008 无成对复合包（单点直写绝对值）；模式表直接取机型能力表；
@@ -843,7 +843,7 @@ class WanjialeElectricWaterHeater(WanjialeDevice):
         """该机型是否可设温 —— 由机型点位决定（008 没有独立的「温度」能力位）。
 
         温控点随机型变，缺点位时不暴露温度控件，避免出现「点了才报
-        『该机型不支持设定温度』」的假控件（见实施方案 §九-12）。
+        『该机型不支持设定温度』」的假控件。
         """
         return bool(self._point("temp"))
 

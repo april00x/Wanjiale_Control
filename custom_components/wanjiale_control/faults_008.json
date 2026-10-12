@@ -3,7 +3,6 @@
   "schemaVersion": "1.0",
   "scope": "故障文案与机型相关：同一编码在不同机型含义可能不同，故按机型存放，不可跨机型套用。",
   "keyField": "firm_product_model（如 WJL_008_ACB）",
-  "source": "build_capability_008.py（deep008/faults_json.csv）",
   "note": "主键 product 限定：TRF(002/008)、TTH(008/052) 等型号码跨线重名，裸型号码做键会串味。"
  },
  "devices": {
