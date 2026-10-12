@@ -28,7 +28,8 @@
 | 品类 | 状态 | 实体文档 |
 | --- | --- | --- |
 | 燃气热水器 | 已支持，U9 MAX 实测 | [water_heater.md](doc/water_heater.md) |
-| 电热水器/油烟机 / 灶具 / 消毒柜等 | TODO | — |
+| 电热水器 | 部份支持 | [electric_water_heater.md](doc/electric_water_heater.md) |
+| 油烟机 / 灶具 / 消毒柜等 | TODO |  |
 
 ## 功能
 
