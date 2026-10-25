@@ -35,6 +35,7 @@ SWITCH_SPECS: Tuple[SwitchSpec, ...] = (
     SwitchSpec("零冷水/即热", "instant_heat", "零冷水/即热", "mdi:water-sync", "set_instant_heat", "instant_heat_on"),
     SwitchSpec("增压", "boost", "增压", "mdi:water-pump", "set_boost", "boost_on"),
     SwitchSpec("全天循环", "all_day", "全天循环", "mdi:calendar-clock", "set_all_day", "all_day"),
+    SwitchSpec("点动循环", "water_control", "点动循环", "mdi:gesture-tap", "set_motion", "motion_on"),
     SwitchSpec("UV杀菌", "uv", "UV杀菌", "mdi:lightbulb-on-outline", "set_uv", "uv_on"),
     SwitchSpec("巡航杀菌", "sterilize", "巡航杀菌", "mdi:shield-sun-outline", "set_sterilize", "sterilizing"),
     SwitchSpec("预约", "reserve", "预约", "mdi:calendar-check-outline", "set_reserve", "reserve_on"),
@@ -82,7 +83,6 @@ SELECT_SPECS: Tuple[SelectSpec, ...] = (
 # button：一次性动作，无可读状态
 # ======================================================================
 BUTTON_SPECS: Tuple[ButtonSpec, ...] = (
-    ButtonSpec("motion", "点动循环", "mdi:gesture-tap", "set_motion", feature="点动循环"),
     ButtonSpec("reset_water", "累计用水量清零", "mdi:water-off-outline", "reset_water_total", feature="水量/气量清零"),
     ButtonSpec("reset_gas", "累计用气量清零", "mdi:fire-off", "reset_gas_total", feature="水量/气量清零"),
     ButtonSpec("clear_conflict", "清除预约冲突", "mdi:calendar-remove-outline", "clear_reserve_conflict", require_point="245"),

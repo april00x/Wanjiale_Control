@@ -1,0 +1,7493 @@
+{
+  "schemaVersion": 1,
+  "flagOrder": [
+    "开关机",
+    "卫浴温度",
+    "供暖温度",
+    "供暖开关",
+    "供暖模式",
+    "预约供暖",
+    "热水预热",
+    "即热",
+    "保温时长",
+    "回差温度",
+    "增压",
+    "AI",
+    "杀菌",
+    "晨浴夜浴",
+    "复位",
+    "操作权",
+    "预约冲突清除",
+    "童锁"
+  ],
+  "_meta": {
+    "scope": "category=燃气壁挂炉",
+    "keyField": "firm_product_model（如 WJL_002_AJF）",
+    "source": "build_capability_002.py（deep002 CSVs + catalog_models.csv）",
+    "deviceCount": 46,
+    "trfExcluded": "TRF 无资源包，未收录",
+    "flagOrder": [
+      "开关机",
+      "卫浴温度",
+      "供暖温度",
+      "供暖开关",
+      "供暖模式",
+      "预约供暖",
+      "热水预热",
+      "即热",
+      "保温时长",
+      "回差温度",
+      "增压",
+      "AI",
+      "杀菌",
+      "晨浴夜浴",
+      "复位",
+      "操作权",
+      "预约冲突清除",
+      "童锁"
+    ],
+    "notes": [
+      "B5（FFS）：106=童锁、107=模式可写（select 0/2/3）、102=当前温度、104=实际温度；无 fault 键。",
+      "B5 的 readDpids 是 config.xml 模板残留，102~107 以 index.js 证据为准。",
+      "B2c：116=故障、150 只读并作为保温 sensor、128~132 仅存点位；134~148/153 作为热水预热；109 为共享预约温度。",
+      "A 线：供暖量程逐机型取 sliders（多行时最小=地暖、最大=散热片）；无证据时标 assumed。",
+      "A 线 87 range_bit 的极性未获协议证据，range_radiator_value=1 且 range_assumed=true。",
+      "A 线模式仅 CDW/FJR/UMN/WGZ/YMQ/YJW 六机型开放；模式回读 dpid=100。",
+      "B3 的 102~106/103 是洗浴预约（洗浴预约设置），不是供暖预约；本轮不生成预约供暖功能位。",
+      "HQJ 的模式 148 显示文案为 0=自动/1=睡眠/2=在家/3=外出（按 App index.html）。",
+      "B2 的 keep_warm.map 覆盖 0~7，minutes_to_raw 提供写入反查；JGQ 写入 ×3。",
+      "故障文案优先 index.js，其次 config.xml；键为 parse_state 归一化后的值（A 线 0→256）。"
+    ]
+  },
+  "byModelId": {
+    "qdfpqf": "WJL_002_AJF",
+    "mvykkg": "WJL_002_AOB",
+    "tqmhwd": "WJL_002_AXX",
+    "mfdmrt": "WJL_002_CBC",
+    "wwbjwg": "WJL_002_CDW",
+    "cztupq": "WJL_002_CZQ",
+    "gvjtpy": "WJL_002_DNI",
+    "hfgyda": "WJL_002_EOR",
+    "qcvqoq": "WJL_002_ESV",
+    "fsgics": "WJL_002_FFS",
+    "vdoqdq": "WJL_002_FFY",
+    "tconay": "WJL_002_FJR",
+    "hzwfrb": "WJL_002_GMM",
+    "ywzmho": "WJL_002_HGK",
+    "qcnmrt": "WJL_002_HQJ",
+    "kqpvrg": "WJL_002_IRR",
+    "kytmfk": "WJL_002_JCX",
+    "hemtcc": "WJL_002_JGQ",
+    "beqkaw": "WJL_002_JJY",
+    "pglhcc": "WJL_002_JLM",
+    "mxvvua": "WJL_002_KJG",
+    "xerxpj": "WJL_002_KQU",
+    "kkgfwq": "WJL_002_LCH",
+    "imaczx": "WJL_002_LLF",
+    "qvnltn": "WJL_002_LNF",
+    "svhftb": "WJL_002_NWM",
+    "avmoqe": "WJL_002_PGS",
+    "fdtzgz": "WJL_002_POX",
+    "hthiiz": "WJL_002_PRJ",
+    "ebxugz": "WJL_002_RJI",
+    "dyicfr": "WJL_002_RKN",
+    "oscuqn": "WJL_002_RTF",
+    "tfeueb": "WJL_002_SAU",
+    "jepxap": "WJL_002_SRZ",
+    "dhkszf": "WJL_002_UMN",
+    "mgnykn": "WJL_002_UZW",
+    "avxzzs": "WJL_002_UZZ",
+    "bzpnkk": "WJL_002_VMK",
+    "vxruwn": "WJL_002_WGZ",
+    "wfbbog": "WJL_002_WLK",
+    "xayjvc": "WJL_002_XQZ",
+    "xgbvwl": "WJL_002_YIN",
+    "llaqgf": "WJL_002_YJW",
+    "eqffob": "WJL_002_YMQ",
+    "yunheg": "WJL_002_YYZ",
+    "oqdqnt": "WJL_002_ZYI"
+  },
+  "devices": {
+    "WJL_002_AJF": {
+      "name": "万家乐壁挂炉B5A/B6A/BW3",
+      "modelId": "qdfpqf",
+      "family": "B1",
+      "form": "h5",
+      "dialect": "B1",
+      "dvidCount": 38,
+      "flags": "111111000000000000",
+      "modes": [
+        {
+          "id": 2,
+          "name": "在家"
+        },
+        {
+          "id": 3,
+          "name": "外出"
+        },
+        {
+          "id": 4,
+          "name": "睡眠"
+        }
+      ],
+      "points": {
+        "dialect": "B1",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 35,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 25,
+          "max_radiator": 60,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "2": "在家",
+            "3": "外出",
+            "4": "睡眠"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "gas_current": {
+          "dpid": 116,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        }
+      }
+    },
+    "WJL_002_AOB": {
+      "name": "万家乐壁挂炉P3/G2/G6D",
+      "modelId": "mvykkg",
+      "family": "B2b",
+      "form": "h5",
+      "dialect": "B2b",
+      "dvidCount": 58,
+      "flags": "111111111100000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "标准"
+        },
+        {
+          "id": 1,
+          "name": "ECO"
+        },
+        {
+          "id": 2,
+          "name": "在家"
+        },
+        {
+          "id": 3,
+          "name": "外出"
+        },
+        {
+          "id": 4,
+          "name": "睡眠"
+        }
+      ],
+      "points": {
+        "dialect": "B2b",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 30,
+          "max": 65
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 25,
+          "max_radiator": 60,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "0": "标准",
+            "1": "ECO",
+            "2": "在家",
+            "3": "外出",
+            "4": "睡眠"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "gas_current": {
+          "dpid": 116,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        },
+        "diff_temp": {
+          "dpid": 110,
+          "min": 5,
+          "max": 20,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "total": 153,
+          "start": [
+            134,
+            136,
+            138,
+            140,
+            142
+          ],
+          "end": [
+            135,
+            137,
+            139,
+            141,
+            143
+          ],
+          "enable": [
+            144,
+            145,
+            146,
+            147,
+            148
+          ],
+          "next": 149
+        },
+        "keep_warm": {
+          "dpid": 150,
+          "map": {
+            "0": 0,
+            "1": 30,
+            "2": 60,
+            "3": 90,
+            "4": 120,
+            "5": 180,
+            "6": 240,
+            "7": 300
+          },
+          "minutes_to_raw": {
+            "0": 0,
+            "30": 1,
+            "60": 2,
+            "90": 3,
+            "120": 4,
+            "180": 5,
+            "240": 6,
+            "300": 7
+          },
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "unit_min": 30,
+          "write_scale": 1,
+          "assumed": true
+        },
+        "instant_mode": {
+          "dpid": 152
+        }
+      }
+    },
+    "WJL_002_AXX": {
+      "name": "万家乐壁挂炉X10",
+      "modelId": "tqmhwd",
+      "family": "A",
+      "form": "h5",
+      "dialect": "A",
+      "dvidCount": 43,
+      "flags": "111101011100001010",
+      "modes": [],
+      "points": {
+        "dialect": "A",
+        "power": {
+          "dpid": 4,
+          "on": 1
+        },
+        "dhw_set": {
+          "read": 27,
+          "min": 25,
+          "max": 60,
+          "cmd": {
+            "type": 4
+          },
+          "mode_dpid": 23,
+          "flow_dpid": 28,
+          "volume_dpid": 29
+        },
+        "dhw_current": {
+          "dpid": 18
+        },
+        "heat_set": {
+          "read": 94,
+          "min_floor": 30,
+          "max_floor": 80,
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "cmd": {
+            "type": 39
+          },
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 95
+        },
+        "fault": {
+          "dpid": 17,
+          "normal": 255
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "priority": {
+          "dpid": 3
+        },
+        "status": {
+          "dpid": 10,
+          "flow_bit": 2,
+          "flame_bit": 4
+        },
+        "pump": {
+          "dpid": 58,
+          "pump_bit": 2
+        },
+        "heating": {
+          "dpid": 87,
+          "on_bit": 128,
+          "schedule_bit": 4,
+          "range_bit": 32,
+          "range_radiator_value": 1,
+          "range_assumed": true,
+          "eco_bit": 64
+        },
+        "season": {
+          "cmd": {
+            "type": 37,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 87,
+            "bit": 128
+          }
+        },
+        "instant": {
+          "cmd": {
+            "type": 14,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 60,
+            "bit": 8
+          }
+        },
+        "keep_warm": {
+          "cmd": {
+            "type": 10
+          },
+          "read": 53,
+          "unit_min": 10,
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "assumed": true
+        },
+        "reset": {
+          "cmd": {
+            "type": 5,
+            "value": 131071
+          }
+        },
+        "conflict": {
+          "write": 245
+        },
+        "diff_dhw": {
+          "read": 54,
+          "cmd": {
+            "type": 11
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "diff_heat": {
+          "read": 97,
+          "cmd": {
+            "type": 42
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "list": 6,
+          "add": 7,
+          "del": 8,
+          "next": 9
+        },
+        "schedule_heat": {
+          "add": 271,
+          "del": 272,
+          "list": 270,
+          "next": 273,
+          "master_cmd": {
+            "type": 40,
+            "on": 16973823,
+            "off": 196607
+          }
+        },
+        "gas_current": {
+          "high": 33,
+          "low": 34,
+          "scale": 1000
+        },
+        "gas_total": {
+          "bytes": [
+            35,
+            36,
+            37,
+            38
+          ],
+          "scale": 1000
+        },
+        "water_pressure": {
+          "dpid": 67,
+          "mask": 127,
+          "scale": 0.01
+        }
+      }
+    },
+    "WJL_002_CBC": {
+      "name": "万家乐壁挂炉X9A",
+      "modelId": "mfdmrt",
+      "family": "A",
+      "form": "h5",
+      "dialect": "A",
+      "dvidCount": 42,
+      "flags": "111100011100100110",
+      "modes": [],
+      "points": {
+        "dialect": "A",
+        "power": {
+          "dpid": 4,
+          "on": 1
+        },
+        "dhw_set": {
+          "read": 27,
+          "min": 36,
+          "max": 60,
+          "cmd": {
+            "type": 4
+          },
+          "mode_dpid": 23,
+          "flow_dpid": 28,
+          "volume_dpid": 29
+        },
+        "dhw_current": {
+          "dpid": 18
+        },
+        "heat_set": {
+          "read": 94,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 35,
+          "max_radiator": 80,
+          "cmd": {
+            "type": 39
+          },
+          "assumed": true
+        },
+        "fault": {
+          "dpid": 17,
+          "normal": 255
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "priority": {
+          "dpid": 3
+        },
+        "status": {
+          "dpid": 10,
+          "flow_bit": 2,
+          "flame_bit": 4
+        },
+        "pump": {
+          "dpid": 58,
+          "pump_bit": 2
+        },
+        "heating": {
+          "dpid": 87,
+          "on_bit": 128,
+          "schedule_bit": 4,
+          "range_bit": 32,
+          "range_radiator_value": 1,
+          "range_assumed": true,
+          "eco_bit": 64
+        },
+        "season": {
+          "cmd": {
+            "type": 37,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 87,
+            "bit": 128
+          }
+        },
+        "instant": {
+          "cmd": {
+            "type": 14,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 60,
+            "bit": 8
+          }
+        },
+        "keep_warm": {
+          "cmd": {
+            "type": 10
+          },
+          "read": 53,
+          "unit_min": 10,
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "assumed": true
+        },
+        "sterilize": {
+          "dpid": 251
+        },
+        "conflict": {
+          "write": 245
+        },
+        "control_right": {
+          "set": 247,
+          "req": 248,
+          "priority": 3,
+          "request_type": 24
+        },
+        "diff_dhw": {
+          "read": 54,
+          "cmd": {
+            "type": 11
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "diff_heat": {
+          "read": 97,
+          "cmd": {
+            "type": 42
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "list": 6,
+          "add": 7,
+          "del": 8,
+          "next": 9
+        }
+      }
+    },
+    "WJL_002_CDW": {
+      "name": "万家乐壁挂炉B9SPLUS",
+      "modelId": "wwbjwg",
+      "family": "A",
+      "form": "h5",
+      "dialect": "A",
+      "dvidCount": 43,
+      "flags": "111111011111000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "在家"
+        },
+        {
+          "id": 1,
+          "name": "外出"
+        },
+        {
+          "id": 2,
+          "name": "睡眠"
+        },
+        {
+          "id": 3,
+          "name": "自动"
+        }
+      ],
+      "points": {
+        "dialect": "A",
+        "power": {
+          "dpid": 4,
+          "on": 1
+        },
+        "dhw_set": {
+          "read": 27,
+          "min": 32,
+          "max": 60,
+          "cmd": {
+            "type": 4
+          },
+          "mode_dpid": 23,
+          "flow_dpid": 28,
+          "volume_dpid": 29
+        },
+        "dhw_current": {
+          "dpid": 18
+        },
+        "heat_set": {
+          "read": 94,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 35,
+          "max_radiator": 80,
+          "cmd": {
+            "type": 39
+          },
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 95
+        },
+        "fault": {
+          "dpid": 17,
+          "normal": 255
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "priority": {
+          "dpid": 3
+        },
+        "status": {
+          "dpid": 10,
+          "flow_bit": 2,
+          "flame_bit": 4
+        },
+        "pump": {
+          "dpid": 58,
+          "pump_bit": 2
+        },
+        "heating": {
+          "dpid": 87,
+          "on_bit": 128,
+          "schedule_bit": 4,
+          "range_bit": 32,
+          "range_radiator_value": 1,
+          "range_assumed": true,
+          "eco_bit": 64
+        },
+        "season": {
+          "cmd": {
+            "type": 37,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 87,
+            "bit": 128
+          }
+        },
+        "instant": {
+          "cmd": {
+            "type": 14,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 60,
+            "bit": 8
+          }
+        },
+        "keep_warm": {
+          "cmd": {
+            "type": 10
+          },
+          "read": 53,
+          "unit_min": 10,
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "assumed": true
+        },
+        "boost": {
+          "cmd": {
+            "type": 7
+          },
+          "read": {
+            "dpid": 20,
+            "mask": 3
+          }
+        },
+        "ai": {
+          "cmd": {
+            "type": 48
+          },
+          "read": {
+            "dpid": 300,
+            "mask": 1
+          }
+        },
+        "mode": {
+          "cmd": {
+            "type": 45,
+            "subtype": 2,
+            "values": {
+              "0": "在家",
+              "1": "外出",
+              "2": "睡眠",
+              "3": "自动"
+            }
+          },
+          "read": {
+            "dpid": 100
+          }
+        },
+        "diff_dhw": {
+          "read": 54,
+          "cmd": {
+            "type": 11
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "diff_heat": {
+          "read": 97,
+          "cmd": {
+            "type": 42
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "list": 6,
+          "add": 7,
+          "del": 8,
+          "next": 9
+        },
+        "schedule_heat": {
+          "add": 271,
+          "del": 272,
+          "list": 270,
+          "master_cmd": {
+            "type": 40,
+            "on": 16973823,
+            "off": 196607
+          }
+        }
+      }
+    },
+    "WJL_002_CZQ": {
+      "name": "万家乐壁挂炉R5L",
+      "modelId": "cztupq",
+      "family": "B2b",
+      "form": "h5",
+      "dialect": "B2b",
+      "dvidCount": 58,
+      "flags": "111111111100000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "标准"
+        },
+        {
+          "id": 1,
+          "name": "ECO"
+        },
+        {
+          "id": 2,
+          "name": "在家"
+        },
+        {
+          "id": 3,
+          "name": "外出"
+        },
+        {
+          "id": 4,
+          "name": "睡眠"
+        }
+      ],
+      "points": {
+        "dialect": "B2b",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 35,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 25,
+          "max_radiator": 60,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "0": "标准",
+            "1": "ECO",
+            "2": "在家",
+            "3": "外出",
+            "4": "睡眠"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "gas_current": {
+          "dpid": 116,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        },
+        "diff_temp": {
+          "dpid": 110,
+          "min": 5,
+          "max": 20,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "total": 153,
+          "start": [
+            134,
+            136,
+            138,
+            140,
+            142
+          ],
+          "end": [
+            135,
+            137,
+            139,
+            141,
+            143
+          ],
+          "enable": [
+            144,
+            145,
+            146,
+            147,
+            148
+          ],
+          "next": 149
+        },
+        "keep_warm": {
+          "dpid": 150,
+          "map": {
+            "0": 0,
+            "1": 30,
+            "2": 60,
+            "3": 90,
+            "4": 120,
+            "5": 180,
+            "6": 240,
+            "7": 300
+          },
+          "minutes_to_raw": {
+            "0": 0,
+            "30": 1,
+            "60": 2,
+            "90": 3,
+            "120": 4,
+            "180": 5,
+            "240": 6,
+            "300": 7
+          },
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "unit_min": 30,
+          "write_scale": 1,
+          "assumed": true
+        },
+        "instant_mode": {
+          "dpid": 152
+        }
+      }
+    },
+    "WJL_002_DNI": {
+      "name": "万家乐壁挂炉G1",
+      "modelId": "gvjtpy",
+      "family": "C",
+      "form": "native",
+      "dialect": "C",
+      "dvidCount": 42,
+      "flags": "111111000100000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "标准"
+        },
+        {
+          "id": 1,
+          "name": "ECO"
+        }
+      ],
+      "points": {
+        "dialect": "C",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 35,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "0": "标准",
+            "1": "ECO"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        },
+        "diff_temp": {
+          "dpid": 110,
+          "min": 5,
+          "max": 20,
+          "assumed": true
+        }
+      }
+    },
+    "WJL_002_EOR": {
+      "name": "万家乐壁挂炉B6A",
+      "modelId": "hfgyda",
+      "family": "B1",
+      "form": "h5",
+      "dialect": "B1",
+      "dvidCount": 37,
+      "flags": "111111000000000000",
+      "modes": [
+        {
+          "id": 2,
+          "name": "在家"
+        },
+        {
+          "id": 3,
+          "name": "外出"
+        },
+        {
+          "id": 4,
+          "name": "睡眠"
+        }
+      ],
+      "points": {
+        "dialect": "B1",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 36,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 36,
+          "max_floor": 60,
+          "min_radiator": 36,
+          "max_radiator": 60,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "2": "在家",
+            "3": "外出",
+            "4": "睡眠"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        }
+      }
+    },
+    "WJL_002_ESV": {
+      "name": "万家乐壁挂炉R6",
+      "modelId": "qcvqoq",
+      "family": "B1",
+      "form": "h5",
+      "dialect": "B1",
+      "dvidCount": 38,
+      "flags": "111111000000000000",
+      "modes": [
+        {
+          "id": 2,
+          "name": "在家"
+        },
+        {
+          "id": 3,
+          "name": "外出"
+        },
+        {
+          "id": 4,
+          "name": "睡眠"
+        }
+      ],
+      "points": {
+        "dialect": "B1",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 36,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 36,
+          "max_floor": 60,
+          "min_radiator": 36,
+          "max_radiator": 60,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "2": "在家",
+            "3": "外出",
+            "4": "睡眠"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "gas_current": {
+          "dpid": 116,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        }
+      }
+    },
+    "WJL_002_FFS": {
+      "name": "万家乐壁挂炉W3",
+      "modelId": "fsgics",
+      "family": "B5",
+      "form": "h5",
+      "dialect": "B5",
+      "dvidCount": 22,
+      "flags": "110000000000000001",
+      "modes": [
+        {
+          "id": 0,
+          "name": "舒适"
+        },
+        {
+          "id": 2,
+          "name": "周计划"
+        },
+        {
+          "id": 3,
+          "name": "防冻"
+        }
+      ],
+      "points": {
+        "dialect": "B5",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 103,
+          "min": 2,
+          "max": 35
+        },
+        "dhw_current": {
+          "dpid": 102
+        },
+        "dhw_actual": {
+          "dpid": 104,
+          "scale": "v/10-20"
+        },
+        "heating_state": {
+          "dpid": 105,
+          "on": 1
+        },
+        "child_lock": {
+          "dpid": 106
+        },
+        "mode": {
+          "dpid": 107,
+          "values": {
+            "0": "舒适",
+            "2": "周计划",
+            "3": "防冻"
+          },
+          "device_mode": true
+        },
+        "online": {
+          "dpid": 1002
+        }
+      }
+    },
+    "WJL_002_FFY": {
+      "name": "万家乐壁挂炉X10升级版",
+      "modelId": "vdoqdq",
+      "family": "A",
+      "form": "h5",
+      "dialect": "A",
+      "dvidCount": 46,
+      "flags": "111101011100100110",
+      "modes": [],
+      "points": {
+        "dialect": "A",
+        "power": {
+          "dpid": 4,
+          "on": 1
+        },
+        "dhw_set": {
+          "read": 27,
+          "min": 36,
+          "max": 60,
+          "cmd": {
+            "type": 4
+          },
+          "mode_dpid": 23,
+          "flow_dpid": 28,
+          "volume_dpid": 29
+        },
+        "dhw_current": {
+          "dpid": 18
+        },
+        "heat_set": {
+          "read": 94,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 35,
+          "max_radiator": 80,
+          "cmd": {
+            "type": 39
+          },
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 95
+        },
+        "fault": {
+          "dpid": 17,
+          "normal": 255
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "priority": {
+          "dpid": 3
+        },
+        "status": {
+          "dpid": 10,
+          "flow_bit": 2,
+          "flame_bit": 4
+        },
+        "pump": {
+          "dpid": 58,
+          "pump_bit": 2
+        },
+        "heating": {
+          "dpid": 87,
+          "on_bit": 128,
+          "schedule_bit": 4,
+          "range_bit": 32,
+          "range_radiator_value": 1,
+          "range_assumed": true,
+          "eco_bit": 64
+        },
+        "season": {
+          "cmd": {
+            "type": 37,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 87,
+            "bit": 128
+          }
+        },
+        "instant": {
+          "cmd": {
+            "type": 14,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 60,
+            "bit": 8
+          }
+        },
+        "keep_warm": {
+          "cmd": {
+            "type": 10
+          },
+          "read": 53,
+          "unit_min": 10,
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "assumed": true
+        },
+        "sterilize": {
+          "dpid": 251
+        },
+        "conflict": {
+          "write": 245
+        },
+        "control_right": {
+          "set": 247,
+          "req": 248,
+          "priority": 3,
+          "request_type": 24
+        },
+        "diff_dhw": {
+          "read": 54,
+          "cmd": {
+            "type": 11
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "diff_heat": {
+          "read": 97,
+          "cmd": {
+            "type": 42
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "list": 6,
+          "add": 7,
+          "del": 8,
+          "next": 9
+        },
+        "schedule_heat": {
+          "add": 271,
+          "del": 272,
+          "list": 270,
+          "master_cmd": {
+            "type": 40,
+            "on": 16973823,
+            "off": 196607
+          }
+        }
+      }
+    },
+    "WJL_002_FJR": {
+      "name": "万家乐壁挂炉R6SPRO/B6S/R6APRO/B6SPLUS",
+      "modelId": "tconay",
+      "family": "A",
+      "form": "h5",
+      "dialect": "A",
+      "dvidCount": 38,
+      "flags": "111110010101000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "在家"
+        },
+        {
+          "id": 1,
+          "name": "外出"
+        },
+        {
+          "id": 2,
+          "name": "睡眠"
+        },
+        {
+          "id": 3,
+          "name": "自动"
+        }
+      ],
+      "points": {
+        "dialect": "A",
+        "power": {
+          "dpid": 4,
+          "on": 1
+        },
+        "dhw_set": {
+          "read": 27,
+          "min": 32,
+          "max": 60,
+          "cmd": {
+            "type": 4
+          },
+          "mode_dpid": 23,
+          "flow_dpid": 28,
+          "volume_dpid": 29
+        },
+        "dhw_current": {
+          "dpid": 18
+        },
+        "heat_set": {
+          "read": 94,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 35,
+          "max_radiator": 80,
+          "cmd": {
+            "type": 39
+          },
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 95
+        },
+        "fault": {
+          "dpid": 17,
+          "normal": 255
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "priority": {
+          "dpid": 3
+        },
+        "status": {
+          "dpid": 10,
+          "flow_bit": 2,
+          "flame_bit": 4
+        },
+        "pump": {
+          "dpid": 58,
+          "pump_bit": 2
+        },
+        "heating": {
+          "dpid": 87,
+          "on_bit": 128,
+          "schedule_bit": 4,
+          "range_bit": 32,
+          "range_radiator_value": 1,
+          "range_assumed": true,
+          "eco_bit": 64
+        },
+        "season": {
+          "cmd": {
+            "type": 37,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 87,
+            "bit": 128
+          }
+        },
+        "instant": {
+          "cmd": {
+            "type": 14,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 60,
+            "bit": 8
+          }
+        },
+        "ai": {
+          "cmd": {
+            "type": 48
+          },
+          "read": {
+            "dpid": 300,
+            "mask": 1
+          }
+        },
+        "mode": {
+          "cmd": {
+            "type": 45,
+            "subtype": 2,
+            "values": {
+              "0": "在家",
+              "1": "外出",
+              "2": "睡眠",
+              "3": "自动"
+            }
+          },
+          "read": {
+            "dpid": 100
+          }
+        },
+        "diff_heat": {
+          "read": 97,
+          "cmd": {
+            "type": 42
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        }
+      }
+    },
+    "WJL_002_GMM": {
+      "name": "万家乐壁挂炉BK6.1",
+      "modelId": "hzwfrb",
+      "family": "B2a",
+      "form": "h5",
+      "dialect": "B2a",
+      "dvidCount": 58,
+      "flags": "111111101100000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "标准"
+        },
+        {
+          "id": 1,
+          "name": "ECO"
+        },
+        {
+          "id": 2,
+          "name": "在家"
+        },
+        {
+          "id": 3,
+          "name": "外出"
+        },
+        {
+          "id": 4,
+          "name": "睡眠"
+        }
+      ],
+      "points": {
+        "dialect": "B2a",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 35,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 25,
+          "max_radiator": 60,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "0": "标准",
+            "1": "ECO",
+            "2": "在家",
+            "3": "外出",
+            "4": "睡眠"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "gas_current": {
+          "dpid": 116,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        },
+        "diff_temp": {
+          "dpid": 110,
+          "min": 5,
+          "max": 20,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "total": 153,
+          "start": [
+            134,
+            136,
+            138,
+            140,
+            142
+          ],
+          "end": [
+            135,
+            137,
+            139,
+            141,
+            143
+          ],
+          "enable": [
+            144,
+            145,
+            146,
+            147,
+            148
+          ],
+          "next": 149
+        },
+        "keep_warm": {
+          "dpid": 150,
+          "map": {
+            "0": 0,
+            "1": 30,
+            "2": 60,
+            "3": 90,
+            "4": 120,
+            "5": 180,
+            "6": 240,
+            "7": 300
+          },
+          "minutes_to_raw": {
+            "0": 0,
+            "30": 1,
+            "60": 2,
+            "90": 3,
+            "120": 4,
+            "180": 5,
+            "240": 6,
+            "300": 7
+          },
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "unit_min": 30,
+          "write_scale": 1,
+          "assumed": true
+        }
+      }
+    },
+    "WJL_002_HGK": {
+      "name": "万家乐壁挂炉B6.1",
+      "modelId": "ywzmho",
+      "family": "B2a",
+      "form": "h5",
+      "dialect": "B2a",
+      "dvidCount": 58,
+      "flags": "111111101100000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "标准"
+        },
+        {
+          "id": 1,
+          "name": "ECO"
+        },
+        {
+          "id": 2,
+          "name": "在家"
+        },
+        {
+          "id": 3,
+          "name": "外出"
+        },
+        {
+          "id": 4,
+          "name": "睡眠"
+        }
+      ],
+      "points": {
+        "dialect": "B2a",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 35,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 25,
+          "max_radiator": 60,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "0": "标准",
+            "1": "ECO",
+            "2": "在家",
+            "3": "外出",
+            "4": "睡眠"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "gas_current": {
+          "dpid": 116,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        },
+        "diff_temp": {
+          "dpid": 110,
+          "min": 5,
+          "max": 20,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "total": 153,
+          "start": [
+            134,
+            136,
+            138,
+            140,
+            142
+          ],
+          "end": [
+            135,
+            137,
+            139,
+            141,
+            143
+          ],
+          "enable": [
+            144,
+            145,
+            146,
+            147,
+            148
+          ],
+          "next": 149
+        },
+        "keep_warm": {
+          "dpid": 150,
+          "map": {
+            "0": 0,
+            "1": 30,
+            "2": 60,
+            "3": 90,
+            "4": 120,
+            "5": 180,
+            "6": 240,
+            "7": 300
+          },
+          "minutes_to_raw": {
+            "0": 0,
+            "30": 1,
+            "60": 2,
+            "90": 3,
+            "120": 4,
+            "180": 5,
+            "240": 6,
+            "300": 7
+          },
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "unit_min": 30,
+          "write_scale": 1,
+          "assumed": true
+        }
+      }
+    },
+    "WJL_002_HQJ": {
+      "name": "万家乐壁挂炉B6L",
+      "modelId": "qcnmrt",
+      "family": "B4",
+      "form": "h5",
+      "dialect": "B4",
+      "dvidCount": 113,
+      "flags": "111111111100100000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "自动"
+        },
+        {
+          "id": 1,
+          "name": "睡眠"
+        },
+        {
+          "id": 2,
+          "name": "在家"
+        },
+        {
+          "id": 3,
+          "name": "外出"
+        }
+      ],
+      "points": {
+        "dialect": "B4",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 109,
+          "min": 35,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 110,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 113,
+          "floor": 1,
+          "radiator": 0
+        },
+        "heating": {
+          "dpid": 150,
+          "on": 1
+        },
+        "mode": {
+          "dpid": 148,
+          "values": {
+            "0": "自动",
+            "1": "睡眠",
+            "2": "在家",
+            "3": "外出"
+          }
+        },
+        "fault": {
+          "dpid": 151,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "water_pressure": {
+          "dpid": 102,
+          "scale": 0.01
+        },
+        "gas_total": {
+          "dpid": 103,
+          "scale": 256
+        },
+        "instant_mode": {
+          "dpid": 147
+        },
+        "keep_warm": {
+          "dpid": 146,
+          "unit_min": 10,
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "assumed": true
+        },
+        "sterilize": {
+          "dpid": 149
+        },
+        "diff_dhw": {
+          "dpid": 111,
+          "write_offset": 3,
+          "assumed": true
+        },
+        "diff_heat": {
+          "dpid": 112,
+          "write_offset": 5,
+          "assumed": true
+        },
+        "thermostats": [
+          {
+            "base": 153,
+            "current": 153,
+            "set": 154,
+            "enable": 155,
+            "fault": 156,
+            "device_id": 157
+          },
+          {
+            "base": 158,
+            "current": 158,
+            "set": 159,
+            "enable": 160,
+            "fault": 161,
+            "device_id": 162
+          },
+          {
+            "base": 163,
+            "current": 163,
+            "set": 164,
+            "enable": 165,
+            "fault": 166,
+            "device_id": 167
+          },
+          {
+            "base": 168,
+            "current": 168,
+            "set": 169,
+            "enable": 170,
+            "fault": 171,
+            "device_id": 172
+          },
+          {
+            "base": 173,
+            "current": 173,
+            "set": 174,
+            "enable": 175,
+            "fault": 176,
+            "device_id": 177
+          },
+          {
+            "base": 178,
+            "current": 178,
+            "set": 179,
+            "enable": 180,
+            "fault": 181,
+            "device_id": 182
+          },
+          {
+            "base": 183,
+            "current": 183,
+            "set": 184,
+            "enable": 185,
+            "fault": 186,
+            "device_id": 187
+          },
+          {
+            "base": 188,
+            "current": 188,
+            "set": 189,
+            "enable": 190,
+            "fault": 191,
+            "device_id": 192
+          }
+        ],
+        "schedule_heat": {
+          "total": 144,
+          "start": [
+            114,
+            116,
+            118,
+            120,
+            122
+          ],
+          "end": [
+            115,
+            117,
+            119,
+            121,
+            123
+          ],
+          "enable": [
+            124,
+            125,
+            126,
+            127,
+            128
+          ],
+          "temp": [
+            193,
+            194,
+            195,
+            196,
+            197
+          ]
+        },
+        "schedule_dhw": {
+          "total": 145,
+          "start": [
+            129,
+            131,
+            133,
+            135,
+            137
+          ],
+          "end": [
+            130,
+            132,
+            134,
+            136,
+            138
+          ],
+          "enable": [
+            139,
+            140,
+            141,
+            142,
+            143
+          ]
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        }
+      }
+    },
+    "WJL_002_IRR": {
+      "name": "万家乐壁挂炉17",
+      "modelId": "kqpvrg",
+      "family": "B1",
+      "form": "h5",
+      "dialect": "B1",
+      "dvidCount": 38,
+      "flags": "111111000000000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "标准"
+        },
+        {
+          "id": 1,
+          "name": "ECO"
+        }
+      ],
+      "points": {
+        "dialect": "B1",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 36,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 36,
+          "max_floor": 60,
+          "min_radiator": 36,
+          "max_radiator": 60,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "0": "标准",
+            "1": "ECO"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "gas_current": {
+          "dpid": 116,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        }
+      }
+    },
+    "WJL_002_JCX": {
+      "name": "万家乐壁挂炉M2",
+      "modelId": "kytmfk",
+      "family": "C",
+      "form": "native",
+      "dialect": "C",
+      "dvidCount": 42,
+      "flags": "111111000100000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "标准"
+        },
+        {
+          "id": 1,
+          "name": "ECO"
+        }
+      ],
+      "points": {
+        "dialect": "C",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 35,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "0": "标准",
+            "1": "ECO"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        },
+        "diff_temp": {
+          "dpid": 110,
+          "min": 5,
+          "max": 20,
+          "assumed": true
+        }
+      }
+    },
+    "WJL_002_JGQ": {
+      "name": "万家乐壁挂炉BX7",
+      "modelId": "hemtcc",
+      "family": "B2b",
+      "form": "h5",
+      "dialect": "B2b",
+      "dvidCount": 58,
+      "flags": "111111111100000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "标准"
+        },
+        {
+          "id": 1,
+          "name": "ECO"
+        },
+        {
+          "id": 2,
+          "name": "在家"
+        },
+        {
+          "id": 3,
+          "name": "外出"
+        },
+        {
+          "id": 4,
+          "name": "睡眠"
+        }
+      ],
+      "points": {
+        "dialect": "B2b",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 35,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 25,
+          "max_radiator": 60,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "0": "标准",
+            "1": "ECO",
+            "2": "在家",
+            "3": "外出",
+            "4": "睡眠"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "gas_current": {
+          "dpid": 116,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        },
+        "diff_temp": {
+          "dpid": 110,
+          "min": 5,
+          "max": 20,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "total": 153,
+          "start": [
+            134,
+            136,
+            138,
+            140,
+            142
+          ],
+          "end": [
+            135,
+            137,
+            139,
+            141,
+            143
+          ],
+          "enable": [
+            144,
+            145,
+            146,
+            147,
+            148
+          ],
+          "next": 149
+        },
+        "keep_warm": {
+          "dpid": 150,
+          "map": {
+            "0": 0,
+            "1": 30,
+            "2": 60,
+            "3": 90,
+            "4": 120,
+            "5": 180,
+            "6": 240,
+            "7": 300
+          },
+          "minutes_to_raw": {
+            "0": 0,
+            "30": 1,
+            "60": 2,
+            "90": 3,
+            "120": 4,
+            "180": 5,
+            "240": 6,
+            "300": 7
+          },
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "unit_min": 30,
+          "write_scale": 3,
+          "assumed": true
+        },
+        "instant_mode": {
+          "dpid": 152
+        }
+      }
+    },
+    "WJL_002_JJY": {
+      "name": "万家乐壁挂炉B6.2",
+      "modelId": "beqkaw",
+      "family": "B2c",
+      "form": "h5",
+      "dialect": "B2c",
+      "dvidCount": 57,
+      "flags": "111111110100000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "标准"
+        },
+        {
+          "id": 1,
+          "name": "ECO"
+        },
+        {
+          "id": 2,
+          "name": "在家"
+        },
+        {
+          "id": 3,
+          "name": "外出"
+        },
+        {
+          "id": 4,
+          "name": "睡眠"
+        }
+      ],
+      "points": {
+        "dialect": "B2c",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 35,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 25,
+          "max_radiator": 60,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 111,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "0": "标准",
+            "1": "ECO",
+            "2": "在家",
+            "3": "外出",
+            "4": "睡眠"
+          }
+        },
+        "fault": {
+          "dpid": 116,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "diff_temp": {
+          "dpid": 110,
+          "min": 5,
+          "max": 20,
+          "assumed": true
+        },
+        "instant_mode": {
+          "dpid": 152
+        },
+        "keep_warm_readonly": {
+          "dpid": 150
+        },
+        "schedule_dhw": {
+          "total": 153,
+          "start": [
+            134,
+            136,
+            138,
+            140,
+            142
+          ],
+          "end": [
+            135,
+            137,
+            139,
+            141,
+            143
+          ],
+          "enable": [
+            144,
+            145,
+            146,
+            147,
+            148
+          ],
+          "next": 149
+        },
+        "schedule_heat": {
+          "total": 127,
+          "start": [
+            117,
+            119,
+            121,
+            123,
+            125
+          ],
+          "end": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": null,
+          "shared_temp": 109
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        }
+      }
+    },
+    "WJL_002_JLM": {
+      "name": "万家乐壁挂炉G3",
+      "modelId": "pglhcc",
+      "family": "C",
+      "form": "native",
+      "dialect": "C",
+      "dvidCount": 42,
+      "flags": "111111000100000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "标准"
+        },
+        {
+          "id": 1,
+          "name": "ECO"
+        }
+      ],
+      "points": {
+        "dialect": "C",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 35,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "0": "标准",
+            "1": "ECO"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        },
+        "diff_temp": {
+          "dpid": 110,
+          "min": 5,
+          "max": 20,
+          "assumed": true
+        }
+      }
+    },
+    "WJL_002_KJG": {
+      "name": "万家乐壁挂炉M1",
+      "modelId": "mxvvua",
+      "family": "C",
+      "form": "native",
+      "dialect": "C",
+      "dvidCount": 42,
+      "flags": "111111000100000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "标准"
+        },
+        {
+          "id": 1,
+          "name": "ECO"
+        }
+      ],
+      "points": {
+        "dialect": "C",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 35,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "0": "标准",
+            "1": "ECO"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        },
+        "diff_temp": {
+          "dpid": 110,
+          "min": 5,
+          "max": 20,
+          "assumed": true
+        }
+      }
+    },
+    "WJL_002_KQU": {
+      "name": "万家乐壁挂炉RW/BW",
+      "modelId": "xerxpj",
+      "family": "B1",
+      "form": "h5",
+      "dialect": "B1",
+      "dvidCount": 38,
+      "flags": "111111000000000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "标准"
+        },
+        {
+          "id": 1,
+          "name": "ECO"
+        }
+      ],
+      "points": {
+        "dialect": "B1",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 36,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 36,
+          "max_floor": 60,
+          "min_radiator": 36,
+          "max_radiator": 60,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "0": "标准",
+            "1": "ECO"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "gas_current": {
+          "dpid": 116,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        }
+      }
+    },
+    "WJL_002_LCH": {
+      "name": "万家乐壁挂炉2",
+      "modelId": "kkgfwq",
+      "family": "A",
+      "form": "h5",
+      "dialect": "A",
+      "dvidCount": 43,
+      "flags": "111101011100001010",
+      "modes": [],
+      "points": {
+        "dialect": "A",
+        "power": {
+          "dpid": 4,
+          "on": 1
+        },
+        "dhw_set": {
+          "read": 27,
+          "min": 25,
+          "max": 60,
+          "cmd": {
+            "type": 4
+          },
+          "mode_dpid": 23,
+          "flow_dpid": 28,
+          "volume_dpid": 29
+        },
+        "dhw_current": {
+          "dpid": 18
+        },
+        "heat_set": {
+          "read": 94,
+          "min_floor": 30,
+          "max_floor": 80,
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "cmd": {
+            "type": 39
+          },
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 95
+        },
+        "fault": {
+          "dpid": 17,
+          "normal": 255
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "priority": {
+          "dpid": 3
+        },
+        "status": {
+          "dpid": 10,
+          "flow_bit": 2,
+          "flame_bit": 4
+        },
+        "pump": {
+          "dpid": 58,
+          "pump_bit": 2
+        },
+        "heating": {
+          "dpid": 87,
+          "on_bit": 128,
+          "schedule_bit": 4,
+          "range_bit": 32,
+          "range_radiator_value": 1,
+          "range_assumed": true,
+          "eco_bit": 64
+        },
+        "season": {
+          "cmd": {
+            "type": 37,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 87,
+            "bit": 128
+          }
+        },
+        "instant": {
+          "cmd": {
+            "type": 14,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 60,
+            "bit": 8
+          }
+        },
+        "keep_warm": {
+          "cmd": {
+            "type": 10
+          },
+          "read": 53,
+          "unit_min": 10,
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "assumed": true
+        },
+        "reset": {
+          "cmd": {
+            "type": 5,
+            "value": 131071
+          }
+        },
+        "conflict": {
+          "write": 245
+        },
+        "diff_dhw": {
+          "read": 54,
+          "cmd": {
+            "type": 11
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "diff_heat": {
+          "read": 97,
+          "cmd": {
+            "type": 42
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "list": 6,
+          "add": 7,
+          "del": 8,
+          "next": 9
+        },
+        "schedule_heat": {
+          "add": 271,
+          "del": 272,
+          "list": 270,
+          "next": 273,
+          "master_cmd": {
+            "type": 40,
+            "on": 16973823,
+            "off": 196607
+          }
+        },
+        "gas_current": {
+          "high": 33,
+          "low": 34,
+          "scale": 1000
+        },
+        "gas_total": {
+          "bytes": [
+            35,
+            36,
+            37,
+            38
+          ],
+          "scale": 1000
+        },
+        "water_pressure": {
+          "dpid": 67,
+          "mask": 127,
+          "scale": 0.01
+        }
+      }
+    },
+    "WJL_002_LLF": {
+      "name": "万家乐壁挂炉B5",
+      "modelId": "imaczx",
+      "family": "B2c",
+      "form": "h5",
+      "dialect": "B2c",
+      "dvidCount": 57,
+      "flags": "111111110100000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "标准"
+        },
+        {
+          "id": 1,
+          "name": "ECO"
+        },
+        {
+          "id": 2,
+          "name": "在家"
+        },
+        {
+          "id": 3,
+          "name": "外出"
+        },
+        {
+          "id": 4,
+          "name": "睡眠"
+        }
+      ],
+      "points": {
+        "dialect": "B2c",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 35,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 25,
+          "max_radiator": 60,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 111,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "0": "标准",
+            "1": "ECO",
+            "2": "在家",
+            "3": "外出",
+            "4": "睡眠"
+          }
+        },
+        "fault": {
+          "dpid": 116,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "diff_temp": {
+          "dpid": 110,
+          "min": 5,
+          "max": 20,
+          "assumed": true
+        },
+        "instant_mode": {
+          "dpid": 152
+        },
+        "keep_warm_readonly": {
+          "dpid": 150
+        },
+        "schedule_dhw": {
+          "total": 153,
+          "start": [
+            134,
+            136,
+            138,
+            140,
+            142
+          ],
+          "end": [
+            135,
+            137,
+            139,
+            141,
+            143
+          ],
+          "enable": [
+            144,
+            145,
+            146,
+            147,
+            148
+          ],
+          "next": 149
+        },
+        "schedule_heat": {
+          "total": 127,
+          "start": [
+            117,
+            119,
+            121,
+            123,
+            125
+          ],
+          "end": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": null,
+          "shared_temp": 109
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        }
+      }
+    },
+    "WJL_002_LNF": {
+      "name": "万家乐壁挂炉B2",
+      "modelId": "qvnltn",
+      "family": "B2a",
+      "form": "h5",
+      "dialect": "B2a",
+      "dvidCount": 58,
+      "flags": "111111101100000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "标准"
+        },
+        {
+          "id": 1,
+          "name": "ECO"
+        },
+        {
+          "id": 2,
+          "name": "在家"
+        },
+        {
+          "id": 3,
+          "name": "外出"
+        },
+        {
+          "id": 4,
+          "name": "睡眠"
+        }
+      ],
+      "points": {
+        "dialect": "B2a",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 35,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 25,
+          "max_radiator": 60,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "0": "标准",
+            "1": "ECO",
+            "2": "在家",
+            "3": "外出",
+            "4": "睡眠"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "gas_current": {
+          "dpid": 116,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        },
+        "diff_temp": {
+          "dpid": 110,
+          "min": 5,
+          "max": 20,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "total": 153,
+          "start": [
+            134,
+            136,
+            138,
+            140,
+            142
+          ],
+          "end": [
+            135,
+            137,
+            139,
+            141,
+            143
+          ],
+          "enable": [
+            144,
+            145,
+            146,
+            147,
+            148
+          ],
+          "next": 149
+        },
+        "keep_warm": {
+          "dpid": 150,
+          "map": {
+            "0": 0,
+            "1": 30,
+            "2": 60,
+            "3": 90,
+            "4": 120,
+            "5": 180,
+            "6": 240,
+            "7": 300
+          },
+          "minutes_to_raw": {
+            "0": 0,
+            "30": 1,
+            "60": 2,
+            "90": 3,
+            "120": 4,
+            "180": 5,
+            "240": 6,
+            "300": 7
+          },
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "unit_min": 30,
+          "write_scale": 1,
+          "assumed": true
+        }
+      }
+    },
+    "WJL_002_NWM": {
+      "name": "万家乐壁挂炉B5A(L)",
+      "modelId": "svhftb",
+      "family": "B2b",
+      "form": "h5",
+      "dialect": "B2b",
+      "dvidCount": 58,
+      "flags": "111111111100000000",
+      "modes": [
+        {
+          "id": 2,
+          "name": "在家"
+        },
+        {
+          "id": 3,
+          "name": "外出"
+        },
+        {
+          "id": 4,
+          "name": "睡眠"
+        }
+      ],
+      "points": {
+        "dialect": "B2b",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 35,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 25,
+          "max_radiator": 60,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "2": "在家",
+            "3": "外出",
+            "4": "睡眠"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "gas_current": {
+          "dpid": 116,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        },
+        "diff_temp": {
+          "dpid": 110,
+          "min": 5,
+          "max": 20,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "total": 153,
+          "start": [
+            134,
+            136,
+            138,
+            140,
+            142
+          ],
+          "end": [
+            135,
+            137,
+            139,
+            141,
+            143
+          ],
+          "enable": [
+            144,
+            145,
+            146,
+            147,
+            148
+          ],
+          "next": 149
+        },
+        "keep_warm": {
+          "dpid": 150,
+          "map": {
+            "0": 0,
+            "1": 30,
+            "2": 60,
+            "3": 90,
+            "4": 120,
+            "5": 180,
+            "6": 240,
+            "7": 300
+          },
+          "minutes_to_raw": {
+            "0": 0,
+            "30": 1,
+            "60": 2,
+            "90": 3,
+            "120": 4,
+            "180": 5,
+            "240": 6,
+            "300": 7
+          },
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "unit_min": 30,
+          "write_scale": 1,
+          "assumed": true
+        },
+        "instant_mode": {
+          "dpid": 152
+        }
+      }
+    },
+    "WJL_002_PGS": {
+      "name": "万家乐壁挂炉X9",
+      "modelId": "avmoqe",
+      "family": "A",
+      "form": "h5",
+      "dialect": "A",
+      "dvidCount": 42,
+      "flags": "111100011100110100",
+      "modes": [],
+      "points": {
+        "dialect": "A",
+        "power": {
+          "dpid": 4,
+          "on": 1
+        },
+        "dhw_set": {
+          "read": 27,
+          "min": 36,
+          "max": 60,
+          "cmd": {
+            "type": 4
+          },
+          "mode_dpid": 23,
+          "flow_dpid": 28,
+          "volume_dpid": 29
+        },
+        "dhw_current": {
+          "dpid": 18
+        },
+        "heat_set": {
+          "read": 94,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 35,
+          "max_radiator": 80,
+          "cmd": {
+            "type": 39
+          },
+          "assumed": true
+        },
+        "fault": {
+          "dpid": 17,
+          "normal": 255
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "priority": {
+          "dpid": 3
+        },
+        "status": {
+          "dpid": 10,
+          "flow_bit": 2,
+          "flame_bit": 4
+        },
+        "pump": {
+          "dpid": 58,
+          "pump_bit": 2
+        },
+        "heating": {
+          "dpid": 87,
+          "on_bit": 128,
+          "schedule_bit": 4,
+          "range_bit": 32,
+          "range_radiator_value": 1,
+          "range_assumed": true,
+          "eco_bit": 64
+        },
+        "season": {
+          "cmd": {
+            "type": 37,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 87,
+            "bit": 128
+          }
+        },
+        "instant": {
+          "cmd": {
+            "type": 14,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 60,
+            "bit": 8
+          }
+        },
+        "keep_warm": {
+          "cmd": {
+            "type": 10
+          },
+          "read": 53,
+          "unit_min": 10,
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "assumed": true
+        },
+        "sterilize": {
+          "dpid": 251
+        },
+        "control_right": {
+          "set": 247,
+          "req": 248,
+          "priority": 3,
+          "request_type": 24
+        },
+        "diff_dhw": {
+          "read": 54,
+          "cmd": {
+            "type": 11
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "diff_heat": {
+          "read": 97,
+          "cmd": {
+            "type": 42
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "morning_night": {
+          "cmd_switch": {
+            "type": 27,
+            "encode": "bitmask<<24 | 0x02FFFF"
+          },
+          "cmd_time": {
+            "type": 28,
+            "encode": "m1/30<<24 | m2/30<<16 | m3/30<<8 | m4/30"
+          },
+          "read": {
+            "mode": 81,
+            "morning": [
+              82,
+              83
+            ],
+            "night": [
+              84,
+              85
+            ]
+          }
+        }
+      }
+    },
+    "WJL_002_POX": {
+      "name": "万家乐壁挂炉B3S",
+      "modelId": "fdtzgz",
+      "family": "B1",
+      "form": "h5",
+      "dialect": "B1",
+      "dvidCount": 38,
+      "flags": "111111000000000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "标准"
+        },
+        {
+          "id": 1,
+          "name": "ECO"
+        }
+      ],
+      "points": {
+        "dialect": "B1",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 36,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 30,
+          "max_floor": 80,
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "0": "标准",
+            "1": "ECO"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "gas_current": {
+          "dpid": 116,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        }
+      }
+    },
+    "WJL_002_PRJ": {
+      "name": "万家乐壁挂炉GL0",
+      "modelId": "hthiiz",
+      "family": "A",
+      "form": "h5",
+      "dialect": "A",
+      "dvidCount": 40,
+      "flags": "111101010101000000",
+      "modes": [],
+      "points": {
+        "dialect": "A",
+        "power": {
+          "dpid": 4,
+          "on": 1
+        },
+        "dhw_set": {
+          "read": 27,
+          "min": 32,
+          "max": 60,
+          "cmd": {
+            "type": 4
+          },
+          "mode_dpid": 23,
+          "flow_dpid": 28,
+          "volume_dpid": 29
+        },
+        "dhw_current": {
+          "dpid": 18
+        },
+        "heat_set": {
+          "read": 94,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 35,
+          "max_radiator": 80,
+          "cmd": {
+            "type": 39
+          },
+          "assumed": true
+        },
+        "fault": {
+          "dpid": 17,
+          "normal": 255
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "priority": {
+          "dpid": 3
+        },
+        "status": {
+          "dpid": 10,
+          "flow_bit": 2,
+          "flame_bit": 4
+        },
+        "pump": {
+          "dpid": 58,
+          "pump_bit": 2
+        },
+        "heating": {
+          "dpid": 87,
+          "on_bit": 128,
+          "schedule_bit": 4,
+          "range_bit": 32,
+          "range_radiator_value": 1,
+          "range_assumed": true,
+          "eco_bit": 64
+        },
+        "season": {
+          "cmd": {
+            "type": 37,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 87,
+            "bit": 128
+          }
+        },
+        "instant": {
+          "cmd": {
+            "type": 14,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 60,
+            "bit": 8
+          }
+        },
+        "ai": {
+          "cmd": {
+            "type": 48
+          },
+          "read": {
+            "dpid": 300,
+            "mask": 1
+          }
+        },
+        "diff_heat": {
+          "read": 97,
+          "cmd": {
+            "type": 42
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "list": 6,
+          "add": 7,
+          "del": 8,
+          "next": 9
+        },
+        "schedule_heat": {
+          "add": 271,
+          "del": 272,
+          "list": 270,
+          "master_cmd": {
+            "type": 40,
+            "on": 16973823,
+            "off": 196607
+          }
+        }
+      }
+    },
+    "WJL_002_RJI": {
+      "name": "万家乐壁挂炉G2S",
+      "modelId": "ebxugz",
+      "family": "B1",
+      "form": "h5",
+      "dialect": "B1",
+      "dvidCount": 38,
+      "flags": "111111000000000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "标准"
+        },
+        {
+          "id": 1,
+          "name": "ECO"
+        }
+      ],
+      "points": {
+        "dialect": "B1",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 36,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 36,
+          "max_floor": 60,
+          "min_radiator": 36,
+          "max_radiator": 60,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "0": "标准",
+            "1": "ECO"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "gas_current": {
+          "dpid": 116,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        }
+      }
+    },
+    "WJL_002_RKN": {
+      "name": "万家乐壁挂炉R1/R1A/M3",
+      "modelId": "dyicfr",
+      "family": "A",
+      "form": "h5",
+      "dialect": "A",
+      "dvidCount": 40,
+      "flags": "111101010101000000",
+      "modes": [],
+      "points": {
+        "dialect": "A",
+        "power": {
+          "dpid": 4,
+          "on": 1
+        },
+        "dhw_set": {
+          "read": 27,
+          "min": 32,
+          "max": 60,
+          "cmd": {
+            "type": 4
+          },
+          "mode_dpid": 23,
+          "flow_dpid": 28,
+          "volume_dpid": 29
+        },
+        "dhw_current": {
+          "dpid": 18
+        },
+        "heat_set": {
+          "read": 94,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 35,
+          "max_radiator": 80,
+          "cmd": {
+            "type": 39
+          },
+          "assumed": true
+        },
+        "fault": {
+          "dpid": 17,
+          "normal": 255
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "priority": {
+          "dpid": 3
+        },
+        "status": {
+          "dpid": 10,
+          "flow_bit": 2,
+          "flame_bit": 4
+        },
+        "pump": {
+          "dpid": 58,
+          "pump_bit": 2
+        },
+        "heating": {
+          "dpid": 87,
+          "on_bit": 128,
+          "schedule_bit": 4,
+          "range_bit": 32,
+          "range_radiator_value": 1,
+          "range_assumed": true,
+          "eco_bit": 64
+        },
+        "season": {
+          "cmd": {
+            "type": 37,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 87,
+            "bit": 128
+          }
+        },
+        "instant": {
+          "cmd": {
+            "type": 14,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 60,
+            "bit": 8
+          }
+        },
+        "ai": {
+          "cmd": {
+            "type": 48
+          },
+          "read": {
+            "dpid": 300,
+            "mask": 1
+          }
+        },
+        "diff_heat": {
+          "read": 97,
+          "cmd": {
+            "type": 42
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "list": 6,
+          "add": 7,
+          "del": 8,
+          "next": 9
+        },
+        "schedule_heat": {
+          "add": 271,
+          "del": 272,
+          "list": 270,
+          "master_cmd": {
+            "type": 40,
+            "on": 16973823,
+            "off": 196607
+          }
+        }
+      }
+    },
+    "WJL_002_RTF": {
+      "name": "万家乐壁挂炉Q5/Q3/Q5A",
+      "modelId": "oscuqn",
+      "family": "B3",
+      "form": "h5",
+      "dialect": "B3",
+      "dvidCount": 39,
+      "flags": "111110011011000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "在家"
+        },
+        {
+          "id": 1,
+          "name": "外出"
+        },
+        {
+          "id": 2,
+          "name": "睡眠"
+        },
+        {
+          "id": 3,
+          "name": "自动"
+        }
+      ],
+      "points": {
+        "dialect": "B3",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 111,
+          "min": 35,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 109
+        },
+        "heat_set": {
+          "dpid": 112,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": true
+        },
+        "emitter": {
+          "dpid": 120,
+          "radiator": 1,
+          "floor": 0
+        },
+        "heating": {
+          "dpid": 119,
+          "on": 1
+        },
+        "mode": {
+          "dpid": 122,
+          "values": {
+            "0": "在家",
+            "1": "外出",
+            "2": "睡眠",
+            "3": "自动"
+          }
+        },
+        "fault": {
+          "dpid": 108,
+          "normal": 255
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 107,
+          "flame_bit": 4
+        },
+        "keep_warm": {
+          "dpid": 113,
+          "unit_min": 10,
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "assumed": true
+        },
+        "diff_dhw": {
+          "dpid": 114,
+          "readonly": true
+        },
+        "diff_heat": {
+          "dpid": 121,
+          "readonly": true
+        },
+        "boost": {
+          "dpid": 110
+        },
+        "ai": {
+          "dpid": 123
+        },
+        "instant_mode": {
+          "dpid": 115
+        },
+        "schedule_wash": {
+          "packed": [
+            103
+          ],
+          "delete": 104,
+          "encode": "hhmm",
+          "temp": null
+        }
+      }
+    },
+    "WJL_002_SAU": {
+      "name": "万家乐壁挂炉BK2",
+      "modelId": "tfeueb",
+      "family": "B2a",
+      "form": "h5",
+      "dialect": "B2a",
+      "dvidCount": 58,
+      "flags": "111111101100000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "标准"
+        },
+        {
+          "id": 1,
+          "name": "ECO"
+        },
+        {
+          "id": 2,
+          "name": "在家"
+        },
+        {
+          "id": 3,
+          "name": "外出"
+        },
+        {
+          "id": 4,
+          "name": "睡眠"
+        }
+      ],
+      "points": {
+        "dialect": "B2a",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 35,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 25,
+          "max_radiator": 60,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "0": "标准",
+            "1": "ECO",
+            "2": "在家",
+            "3": "外出",
+            "4": "睡眠"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "gas_current": {
+          "dpid": 116,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        },
+        "diff_temp": {
+          "dpid": 110,
+          "min": 5,
+          "max": 20,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "total": 153,
+          "start": [
+            134,
+            136,
+            138,
+            140,
+            142
+          ],
+          "end": [
+            135,
+            137,
+            139,
+            141,
+            143
+          ],
+          "enable": [
+            144,
+            145,
+            146,
+            147,
+            148
+          ],
+          "next": 149
+        },
+        "keep_warm": {
+          "dpid": 150,
+          "map": {
+            "0": 0,
+            "1": 30,
+            "2": 60,
+            "3": 90,
+            "4": 120,
+            "5": 180,
+            "6": 240,
+            "7": 300
+          },
+          "minutes_to_raw": {
+            "0": 0,
+            "30": 1,
+            "60": 2,
+            "90": 3,
+            "120": 4,
+            "180": 5,
+            "240": 6,
+            "300": 7
+          },
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "unit_min": 30,
+          "write_scale": 1,
+          "assumed": true
+        }
+      }
+    },
+    "WJL_002_SRZ": {
+      "name": "万家乐壁挂炉B3",
+      "modelId": "jepxap",
+      "family": "B2a",
+      "form": "h5",
+      "dialect": "B2a",
+      "dvidCount": 58,
+      "flags": "111111101100000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "标准"
+        },
+        {
+          "id": 1,
+          "name": "ECO"
+        },
+        {
+          "id": 2,
+          "name": "在家"
+        },
+        {
+          "id": 3,
+          "name": "外出"
+        },
+        {
+          "id": 4,
+          "name": "睡眠"
+        }
+      ],
+      "points": {
+        "dialect": "B2a",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 35,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 25,
+          "max_radiator": 60,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "0": "标准",
+            "1": "ECO",
+            "2": "在家",
+            "3": "外出",
+            "4": "睡眠"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "gas_current": {
+          "dpid": 116,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        },
+        "diff_temp": {
+          "dpid": 110,
+          "min": 5,
+          "max": 20,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "total": 153,
+          "start": [
+            134,
+            136,
+            138,
+            140,
+            142
+          ],
+          "end": [
+            135,
+            137,
+            139,
+            141,
+            143
+          ],
+          "enable": [
+            144,
+            145,
+            146,
+            147,
+            148
+          ],
+          "next": 149
+        },
+        "keep_warm": {
+          "dpid": 150,
+          "map": {
+            "0": 0,
+            "1": 30,
+            "2": 60,
+            "3": 90,
+            "4": 120,
+            "5": 180,
+            "6": 240,
+            "7": 300
+          },
+          "minutes_to_raw": {
+            "0": 0,
+            "30": 1,
+            "60": 2,
+            "90": 3,
+            "120": 4,
+            "180": 5,
+            "240": 6,
+            "300": 7
+          },
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "unit_min": 30,
+          "write_scale": 1,
+          "assumed": true
+        }
+      }
+    },
+    "WJL_002_UMN": {
+      "name": "万家乐壁挂炉B6SPRO",
+      "modelId": "dhkszf",
+      "family": "A",
+      "form": "h5",
+      "dialect": "A",
+      "dvidCount": 41,
+      "flags": "111110011111000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "在家"
+        },
+        {
+          "id": 1,
+          "name": "外出"
+        },
+        {
+          "id": 2,
+          "name": "睡眠"
+        },
+        {
+          "id": 3,
+          "name": "自动"
+        }
+      ],
+      "points": {
+        "dialect": "A",
+        "power": {
+          "dpid": 4,
+          "on": 1
+        },
+        "dhw_set": {
+          "read": 27,
+          "min": 32,
+          "max": 60,
+          "cmd": {
+            "type": 4
+          },
+          "mode_dpid": 23,
+          "flow_dpid": 28,
+          "volume_dpid": 29
+        },
+        "dhw_current": {
+          "dpid": 18
+        },
+        "heat_set": {
+          "read": 94,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 35,
+          "max_radiator": 80,
+          "cmd": {
+            "type": 39
+          },
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 95
+        },
+        "fault": {
+          "dpid": 17,
+          "normal": 255
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "priority": {
+          "dpid": 3
+        },
+        "status": {
+          "dpid": 10,
+          "flow_bit": 2,
+          "flame_bit": 4
+        },
+        "pump": {
+          "dpid": 58,
+          "pump_bit": 2
+        },
+        "heating": {
+          "dpid": 87,
+          "on_bit": 128,
+          "schedule_bit": 4,
+          "range_bit": 32,
+          "range_radiator_value": 1,
+          "range_assumed": true,
+          "eco_bit": 64
+        },
+        "season": {
+          "cmd": {
+            "type": 37,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 87,
+            "bit": 128
+          }
+        },
+        "instant": {
+          "cmd": {
+            "type": 14,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 60,
+            "bit": 8
+          }
+        },
+        "keep_warm": {
+          "cmd": {
+            "type": 10
+          },
+          "read": 53,
+          "unit_min": 10,
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "assumed": true
+        },
+        "boost": {
+          "cmd": {
+            "type": 7
+          },
+          "read": {
+            "dpid": 20,
+            "mask": 3
+          }
+        },
+        "ai": {
+          "cmd": {
+            "type": 48
+          },
+          "read": {
+            "dpid": 300,
+            "mask": 1
+          }
+        },
+        "mode": {
+          "cmd": {
+            "type": 45,
+            "subtype": 2,
+            "values": {
+              "0": "在家",
+              "1": "外出",
+              "2": "睡眠",
+              "3": "自动"
+            }
+          },
+          "read": {
+            "dpid": 100
+          }
+        },
+        "diff_dhw": {
+          "read": 54,
+          "cmd": {
+            "type": 11
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "diff_heat": {
+          "read": 97,
+          "cmd": {
+            "type": 42
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "list": 6,
+          "add": 7,
+          "del": 8,
+          "next": 9
+        },
+        "schedule_heat": {
+          "add": 271,
+          "del": 272
+        }
+      }
+    },
+    "WJL_002_UZW": {
+      "name": "万家乐壁挂炉B6.3",
+      "modelId": "mgnykn",
+      "family": "B2c",
+      "form": "h5",
+      "dialect": "B2c",
+      "dvidCount": 53,
+      "flags": "111111110100000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "标准"
+        },
+        {
+          "id": 1,
+          "name": "ECO"
+        },
+        {
+          "id": 2,
+          "name": "在家"
+        },
+        {
+          "id": 3,
+          "name": "外出"
+        },
+        {
+          "id": 4,
+          "name": "睡眠"
+        }
+      ],
+      "points": {
+        "dialect": "B2c",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 35,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 25,
+          "max_radiator": 60,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 111,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "0": "标准",
+            "1": "ECO",
+            "2": "在家",
+            "3": "外出",
+            "4": "睡眠"
+          }
+        },
+        "fault": {
+          "dpid": 116,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "diff_temp": {
+          "dpid": 110,
+          "min": 5,
+          "max": 20,
+          "assumed": true
+        },
+        "instant_mode": {
+          "dpid": 152
+        },
+        "keep_warm_readonly": {
+          "dpid": 150
+        },
+        "schedule_dhw": {
+          "total": 153,
+          "start": [
+            134,
+            136,
+            138,
+            140,
+            142
+          ],
+          "end": [
+            135,
+            137,
+            139,
+            141,
+            143
+          ],
+          "enable": [
+            144,
+            145,
+            146,
+            147,
+            148
+          ],
+          "next": 149
+        },
+        "schedule_heat": {
+          "total": 127,
+          "start": [
+            117,
+            119,
+            121,
+            123,
+            125
+          ],
+          "end": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": null,
+          "shared_temp": 109,
+          "next": 133
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        }
+      }
+    },
+    "WJL_002_UZZ": {
+      "name": "万家乐壁挂炉XC1/B2S/M2",
+      "modelId": "avxzzs",
+      "family": "B1",
+      "form": "h5",
+      "dialect": "B1",
+      "dvidCount": 38,
+      "flags": "111111000000000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "标准"
+        },
+        {
+          "id": 1,
+          "name": "ECO"
+        }
+      ],
+      "points": {
+        "dialect": "B1",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 36,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 36,
+          "max_floor": 60,
+          "min_radiator": 36,
+          "max_radiator": 60,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "0": "标准",
+            "1": "ECO"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "gas_current": {
+          "dpid": 116,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        }
+      }
+    },
+    "WJL_002_VMK": {
+      "name": "万家乐壁挂炉BK3",
+      "modelId": "bzpnkk",
+      "family": "B2a",
+      "form": "h5",
+      "dialect": "B2a",
+      "dvidCount": 58,
+      "flags": "111111101100000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "标准"
+        },
+        {
+          "id": 1,
+          "name": "ECO"
+        },
+        {
+          "id": 2,
+          "name": "在家"
+        },
+        {
+          "id": 3,
+          "name": "外出"
+        },
+        {
+          "id": 4,
+          "name": "睡眠"
+        }
+      ],
+      "points": {
+        "dialect": "B2a",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 35,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 25,
+          "max_radiator": 60,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "0": "标准",
+            "1": "ECO",
+            "2": "在家",
+            "3": "外出",
+            "4": "睡眠"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "gas_current": {
+          "dpid": 116,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        },
+        "diff_temp": {
+          "dpid": 110,
+          "min": 5,
+          "max": 20,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "total": 153,
+          "start": [
+            134,
+            136,
+            138,
+            140,
+            142
+          ],
+          "end": [
+            135,
+            137,
+            139,
+            141,
+            143
+          ],
+          "enable": [
+            144,
+            145,
+            146,
+            147,
+            148
+          ],
+          "next": 149
+        },
+        "keep_warm": {
+          "dpid": 150,
+          "map": {
+            "0": 0,
+            "1": 30,
+            "2": 60,
+            "3": 90,
+            "4": 120,
+            "5": 180,
+            "6": 240,
+            "7": 300
+          },
+          "minutes_to_raw": {
+            "0": 0,
+            "30": 1,
+            "60": 2,
+            "90": 3,
+            "120": 4,
+            "180": 5,
+            "240": 6,
+            "300": 7
+          },
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "unit_min": 30,
+          "write_scale": 1,
+          "assumed": true
+        }
+      }
+    },
+    "WJL_002_WGZ": {
+      "name": "万家乐壁挂炉W10",
+      "modelId": "vxruwn",
+      "family": "A",
+      "form": "h5",
+      "dialect": "A",
+      "dvidCount": 43,
+      "flags": "111111011111000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "在家"
+        },
+        {
+          "id": 1,
+          "name": "外出"
+        },
+        {
+          "id": 2,
+          "name": "睡眠"
+        },
+        {
+          "id": 3,
+          "name": "自动"
+        }
+      ],
+      "points": {
+        "dialect": "A",
+        "power": {
+          "dpid": 4,
+          "on": 1
+        },
+        "dhw_set": {
+          "read": 27,
+          "min": 32,
+          "max": 60,
+          "cmd": {
+            "type": 4
+          },
+          "mode_dpid": 23,
+          "flow_dpid": 28,
+          "volume_dpid": 29
+        },
+        "dhw_current": {
+          "dpid": 18
+        },
+        "heat_set": {
+          "read": 94,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 35,
+          "max_radiator": 80,
+          "cmd": {
+            "type": 39
+          },
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 95
+        },
+        "fault": {
+          "dpid": 17,
+          "normal": 255
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "priority": {
+          "dpid": 3
+        },
+        "status": {
+          "dpid": 10,
+          "flow_bit": 2,
+          "flame_bit": 4
+        },
+        "pump": {
+          "dpid": 58,
+          "pump_bit": 2
+        },
+        "heating": {
+          "dpid": 87,
+          "on_bit": 128,
+          "schedule_bit": 4,
+          "range_bit": 32,
+          "range_radiator_value": 1,
+          "range_assumed": true,
+          "eco_bit": 64
+        },
+        "season": {
+          "cmd": {
+            "type": 37,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 87,
+            "bit": 128
+          }
+        },
+        "instant": {
+          "cmd": {
+            "type": 14,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 60,
+            "bit": 8
+          }
+        },
+        "keep_warm": {
+          "cmd": {
+            "type": 10
+          },
+          "read": 53,
+          "unit_min": 10,
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "assumed": true
+        },
+        "boost": {
+          "cmd": {
+            "type": 7
+          },
+          "read": {
+            "dpid": 20,
+            "mask": 3
+          }
+        },
+        "ai": {
+          "cmd": {
+            "type": 48
+          },
+          "read": {
+            "dpid": 300,
+            "mask": 1
+          }
+        },
+        "mode": {
+          "cmd": {
+            "type": 45,
+            "subtype": 2,
+            "values": {
+              "0": "在家",
+              "1": "外出",
+              "2": "睡眠",
+              "3": "自动"
+            }
+          },
+          "read": {
+            "dpid": 100
+          }
+        },
+        "diff_dhw": {
+          "read": 54,
+          "cmd": {
+            "type": 11
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "diff_heat": {
+          "read": 97,
+          "cmd": {
+            "type": 42
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "list": 6,
+          "add": 7,
+          "del": 8,
+          "next": 9
+        },
+        "schedule_heat": {
+          "add": 271,
+          "del": 272,
+          "list": 270,
+          "master_cmd": {
+            "type": 40,
+            "on": 16973823,
+            "off": 196607
+          }
+        }
+      }
+    },
+    "WJL_002_WLK": {
+      "name": "万家乐壁挂炉102",
+      "modelId": "wfbbog",
+      "family": "A",
+      "form": "h5",
+      "dialect": "A",
+      "dvidCount": 46,
+      "flags": "111101011100100110",
+      "modes": [],
+      "points": {
+        "dialect": "A",
+        "power": {
+          "dpid": 4,
+          "on": 1
+        },
+        "dhw_set": {
+          "read": 27,
+          "min": 36,
+          "max": 60,
+          "cmd": {
+            "type": 4
+          },
+          "mode_dpid": 23,
+          "flow_dpid": 28,
+          "volume_dpid": 29
+        },
+        "dhw_current": {
+          "dpid": 18
+        },
+        "heat_set": {
+          "read": 94,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 35,
+          "max_radiator": 80,
+          "cmd": {
+            "type": 39
+          },
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 95
+        },
+        "fault": {
+          "dpid": 17,
+          "normal": 255
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "priority": {
+          "dpid": 3
+        },
+        "status": {
+          "dpid": 10,
+          "flow_bit": 2,
+          "flame_bit": 4
+        },
+        "pump": {
+          "dpid": 58,
+          "pump_bit": 2
+        },
+        "heating": {
+          "dpid": 87,
+          "on_bit": 128,
+          "schedule_bit": 4,
+          "range_bit": 32,
+          "range_radiator_value": 1,
+          "range_assumed": true,
+          "eco_bit": 64
+        },
+        "season": {
+          "cmd": {
+            "type": 37,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 87,
+            "bit": 128
+          }
+        },
+        "instant": {
+          "cmd": {
+            "type": 14,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 60,
+            "bit": 8
+          }
+        },
+        "keep_warm": {
+          "cmd": {
+            "type": 10
+          },
+          "read": 53,
+          "unit_min": 10,
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "assumed": true
+        },
+        "sterilize": {
+          "dpid": 251
+        },
+        "conflict": {
+          "write": 245
+        },
+        "control_right": {
+          "set": 247,
+          "req": 248,
+          "priority": 3,
+          "request_type": 24
+        },
+        "diff_dhw": {
+          "read": 54,
+          "cmd": {
+            "type": 11
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "diff_heat": {
+          "read": 97,
+          "cmd": {
+            "type": 42
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "list": 6,
+          "add": 7,
+          "del": 8,
+          "next": 9
+        },
+        "schedule_heat": {
+          "add": 271,
+          "del": 272,
+          "list": 270,
+          "master_cmd": {
+            "type": 40,
+            "on": 16973823,
+            "off": 196607
+          }
+        }
+      }
+    },
+    "WJL_002_XQZ": {
+      "name": "万家乐壁挂炉Q6L",
+      "modelId": "xayjvc",
+      "family": "B3",
+      "form": "h5",
+      "dialect": "B3",
+      "dvidCount": 43,
+      "flags": "111110011011000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "在家"
+        },
+        {
+          "id": 1,
+          "name": "外出"
+        },
+        {
+          "id": 2,
+          "name": "睡眠"
+        },
+        {
+          "id": 3,
+          "name": "自动"
+        }
+      ],
+      "points": {
+        "dialect": "B3",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 111,
+          "min": 35,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 109
+        },
+        "heat_set": {
+          "dpid": 112,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": true
+        },
+        "emitter": {
+          "dpid": 120,
+          "radiator": 1,
+          "floor": 0
+        },
+        "heating": {
+          "dpid": 119,
+          "on": 1
+        },
+        "mode": {
+          "dpid": 122,
+          "values": {
+            "0": "在家",
+            "1": "外出",
+            "2": "睡眠",
+            "3": "自动"
+          }
+        },
+        "fault": {
+          "dpid": 108,
+          "normal": 255
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 107,
+          "flame_bit": 4
+        },
+        "keep_warm": {
+          "dpid": 113,
+          "unit_min": 10,
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "assumed": true
+        },
+        "diff_dhw": {
+          "dpid": 114,
+          "readonly": true
+        },
+        "diff_heat": {
+          "dpid": 121,
+          "readonly": true
+        },
+        "boost": {
+          "dpid": 110
+        },
+        "ai": {
+          "dpid": 123
+        },
+        "instant_mode": {
+          "dpid": 115
+        },
+        "schedule_wash": {
+          "packed": [
+            102,
+            103,
+            104,
+            105,
+            106
+          ],
+          "encode": "hhmm",
+          "temp": null
+        }
+      }
+    },
+    "WJL_002_YIN": {
+      "name": "壁挂炉R6S/R6A/B5S/D5/M6D",
+      "modelId": "xgbvwl",
+      "family": "A",
+      "form": "h5",
+      "dialect": "A",
+      "dvidCount": 40,
+      "flags": "111101010101000000",
+      "modes": [],
+      "points": {
+        "dialect": "A",
+        "power": {
+          "dpid": 4,
+          "on": 1
+        },
+        "dhw_set": {
+          "read": 27,
+          "min": 32,
+          "max": 60,
+          "cmd": {
+            "type": 4
+          },
+          "mode_dpid": 23,
+          "flow_dpid": 28,
+          "volume_dpid": 29
+        },
+        "dhw_current": {
+          "dpid": 18
+        },
+        "heat_set": {
+          "read": 94,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 35,
+          "max_radiator": 80,
+          "cmd": {
+            "type": 39
+          },
+          "assumed": true
+        },
+        "fault": {
+          "dpid": 17,
+          "normal": 255
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "priority": {
+          "dpid": 3
+        },
+        "status": {
+          "dpid": 10,
+          "flow_bit": 2,
+          "flame_bit": 4
+        },
+        "pump": {
+          "dpid": 58,
+          "pump_bit": 2
+        },
+        "heating": {
+          "dpid": 87,
+          "on_bit": 128,
+          "schedule_bit": 4,
+          "range_bit": 32,
+          "range_radiator_value": 1,
+          "range_assumed": true,
+          "eco_bit": 64
+        },
+        "season": {
+          "cmd": {
+            "type": 37,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 87,
+            "bit": 128
+          }
+        },
+        "instant": {
+          "cmd": {
+            "type": 14,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 60,
+            "bit": 8
+          }
+        },
+        "ai": {
+          "cmd": {
+            "type": 48
+          },
+          "read": {
+            "dpid": 300,
+            "mask": 1
+          }
+        },
+        "diff_heat": {
+          "read": 97,
+          "cmd": {
+            "type": 42
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "list": 6,
+          "add": 7,
+          "del": 8,
+          "next": 9
+        },
+        "schedule_heat": {
+          "add": 271,
+          "del": 272,
+          "list": 270,
+          "master_cmd": {
+            "type": 40,
+            "on": 16973823,
+            "off": 196607
+          }
+        }
+      }
+    },
+    "WJL_002_YJW": {
+      "name": "万家乐壁挂炉R1L",
+      "modelId": "llaqgf",
+      "family": "A",
+      "form": "h5",
+      "dialect": "A",
+      "dvidCount": 44,
+      "flags": "111110011100110110",
+      "modes": [
+        {
+          "id": 0,
+          "name": "在家"
+        },
+        {
+          "id": 1,
+          "name": "外出"
+        },
+        {
+          "id": 2,
+          "name": "睡眠"
+        },
+        {
+          "id": 3,
+          "name": "自动"
+        }
+      ],
+      "points": {
+        "dialect": "A",
+        "power": {
+          "dpid": 4,
+          "on": 1
+        },
+        "dhw_set": {
+          "read": 27,
+          "min": 32,
+          "max": 60,
+          "cmd": {
+            "type": 4
+          },
+          "mode_dpid": 23,
+          "flow_dpid": 28,
+          "volume_dpid": 29
+        },
+        "dhw_current": {
+          "dpid": 18
+        },
+        "heat_set": {
+          "read": 94,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 35,
+          "max_radiator": 80,
+          "cmd": {
+            "type": 39
+          },
+          "assumed": true
+        },
+        "fault": {
+          "dpid": 17,
+          "normal": 255
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "priority": {
+          "dpid": 3
+        },
+        "status": {
+          "dpid": 10,
+          "flow_bit": 2,
+          "flame_bit": 4
+        },
+        "pump": {
+          "dpid": 58,
+          "pump_bit": 2
+        },
+        "heating": {
+          "dpid": 87,
+          "on_bit": 128,
+          "schedule_bit": 4,
+          "range_bit": 32,
+          "range_radiator_value": 1,
+          "range_assumed": true,
+          "eco_bit": 64
+        },
+        "season": {
+          "cmd": {
+            "type": 37,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 87,
+            "bit": 128
+          }
+        },
+        "instant": {
+          "cmd": {
+            "type": 14,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 60,
+            "bit": 8
+          }
+        },
+        "keep_warm": {
+          "cmd": {
+            "type": 10
+          },
+          "read": 53,
+          "unit_min": 10,
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "assumed": true
+        },
+        "mode": {
+          "cmd": {
+            "type": 45,
+            "subtype": 2,
+            "values": {
+              "0": "在家",
+              "1": "外出",
+              "2": "睡眠",
+              "3": "自动"
+            },
+            "subtype_by_value": {
+              "0": 2,
+              "1": 1,
+              "2": 1,
+              "3": 1
+            }
+          },
+          "read": {
+            "dpid": 100
+          }
+        },
+        "sterilize": {
+          "cmd": {
+            "type": 47,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 79,
+            "bit": 128
+          }
+        },
+        "conflict": {
+          "write": 245
+        },
+        "control_right": {
+          "set": 247,
+          "req": 248,
+          "priority": 3,
+          "request_type": 24
+        },
+        "diff_dhw": {
+          "read": 54,
+          "cmd": {
+            "type": 11
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "diff_heat": {
+          "read": 97,
+          "cmd": {
+            "type": 42
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "list": 6,
+          "add": 7,
+          "del": 8,
+          "next": 9
+        },
+        "morning_night": {
+          "cmd_switch": {
+            "type": 27,
+            "encode": "bitmask<<24 | 0x02FFFF"
+          },
+          "cmd_time": {
+            "type": 28,
+            "encode": "m1/30<<24 | m2/30<<16 | m3/30<<8 | m4/30"
+          },
+          "read": {
+            "mode": 81,
+            "morning": [
+              82,
+              83
+            ],
+            "night": [
+              84,
+              85
+            ]
+          }
+        }
+      }
+    },
+    "WJL_002_YMQ": {
+      "name": "万家乐壁挂炉B9SPRO",
+      "modelId": "eqffob",
+      "family": "A",
+      "form": "h5",
+      "dialect": "A",
+      "dvidCount": 43,
+      "flags": "111111011111000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "在家"
+        },
+        {
+          "id": 1,
+          "name": "外出"
+        },
+        {
+          "id": 2,
+          "name": "睡眠"
+        },
+        {
+          "id": 3,
+          "name": "自动"
+        }
+      ],
+      "points": {
+        "dialect": "A",
+        "power": {
+          "dpid": 4,
+          "on": 1
+        },
+        "dhw_set": {
+          "read": 27,
+          "min": 32,
+          "max": 60,
+          "cmd": {
+            "type": 4
+          },
+          "mode_dpid": 23,
+          "flow_dpid": 28,
+          "volume_dpid": 29
+        },
+        "dhw_current": {
+          "dpid": 18
+        },
+        "heat_set": {
+          "read": 94,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 35,
+          "max_radiator": 80,
+          "cmd": {
+            "type": 39
+          },
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 95
+        },
+        "fault": {
+          "dpid": 17,
+          "normal": 255
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "priority": {
+          "dpid": 3
+        },
+        "status": {
+          "dpid": 10,
+          "flow_bit": 2,
+          "flame_bit": 4
+        },
+        "pump": {
+          "dpid": 58,
+          "pump_bit": 2
+        },
+        "heating": {
+          "dpid": 87,
+          "on_bit": 128,
+          "schedule_bit": 4,
+          "range_bit": 32,
+          "range_radiator_value": 1,
+          "range_assumed": true,
+          "eco_bit": 64
+        },
+        "season": {
+          "cmd": {
+            "type": 37,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 87,
+            "bit": 128
+          }
+        },
+        "instant": {
+          "cmd": {
+            "type": 14,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 60,
+            "bit": 8
+          }
+        },
+        "keep_warm": {
+          "cmd": {
+            "type": 10
+          },
+          "read": 53,
+          "unit_min": 10,
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "assumed": true
+        },
+        "boost": {
+          "cmd": {
+            "type": 7
+          },
+          "read": {
+            "dpid": 20,
+            "mask": 3
+          }
+        },
+        "ai": {
+          "cmd": {
+            "type": 48
+          },
+          "read": {
+            "dpid": 300,
+            "mask": 1
+          }
+        },
+        "mode": {
+          "cmd": {
+            "type": 45,
+            "subtype": 2,
+            "values": {
+              "0": "在家",
+              "1": "外出",
+              "2": "睡眠",
+              "3": "自动"
+            }
+          },
+          "read": {
+            "dpid": 100
+          }
+        },
+        "diff_dhw": {
+          "read": 54,
+          "cmd": {
+            "type": 11
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "diff_heat": {
+          "read": 97,
+          "cmd": {
+            "type": 42
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "list": 6,
+          "add": 7,
+          "del": 8,
+          "next": 9
+        },
+        "schedule_heat": {
+          "add": 271,
+          "del": 272,
+          "list": 270,
+          "master_cmd": {
+            "type": 40,
+            "on": 16973823,
+            "off": 196607
+          }
+        }
+      }
+    },
+    "WJL_002_YYZ": {
+      "name": "万家乐壁挂炉",
+      "modelId": "yunheg",
+      "family": "A",
+      "form": "h5",
+      "dialect": "A",
+      "dvidCount": 43,
+      "flags": "111101011100001010",
+      "modes": [],
+      "points": {
+        "dialect": "A",
+        "power": {
+          "dpid": 4,
+          "on": 1
+        },
+        "dhw_set": {
+          "read": 27,
+          "min": 25,
+          "max": 60,
+          "cmd": {
+            "type": 4
+          },
+          "mode_dpid": 23,
+          "flow_dpid": 28,
+          "volume_dpid": 29
+        },
+        "dhw_current": {
+          "dpid": 18
+        },
+        "heat_set": {
+          "read": 94,
+          "min_floor": 30,
+          "max_floor": 80,
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "cmd": {
+            "type": 39
+          },
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 95
+        },
+        "fault": {
+          "dpid": 17,
+          "normal": 255
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "priority": {
+          "dpid": 3
+        },
+        "status": {
+          "dpid": 10,
+          "flow_bit": 2,
+          "flame_bit": 4
+        },
+        "pump": {
+          "dpid": 58,
+          "pump_bit": 2
+        },
+        "heating": {
+          "dpid": 87,
+          "on_bit": 128,
+          "schedule_bit": 4,
+          "range_bit": 32,
+          "range_radiator_value": 1,
+          "range_assumed": true,
+          "eco_bit": 64
+        },
+        "season": {
+          "cmd": {
+            "type": 37,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 87,
+            "bit": 128
+          }
+        },
+        "instant": {
+          "cmd": {
+            "type": 14,
+            "on": 16973823,
+            "off": 196607
+          },
+          "read": {
+            "dpid": 60,
+            "bit": 8
+          }
+        },
+        "keep_warm": {
+          "cmd": {
+            "type": 10
+          },
+          "read": 53,
+          "unit_min": 10,
+          "levels": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "assumed": true
+        },
+        "reset": {
+          "cmd": {
+            "type": 5,
+            "value": 131071
+          }
+        },
+        "conflict": {
+          "write": 245
+        },
+        "diff_dhw": {
+          "read": 54,
+          "cmd": {
+            "type": 11
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "diff_heat": {
+          "read": 97,
+          "cmd": {
+            "type": 42
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "assumed": true
+        },
+        "schedule_dhw": {
+          "list": 6,
+          "add": 7,
+          "del": 8,
+          "next": 9
+        },
+        "schedule_heat": {
+          "add": 271,
+          "del": 272,
+          "list": 270,
+          "next": 273,
+          "master_cmd": {
+            "type": 40,
+            "on": 16973823,
+            "off": 196607
+          }
+        },
+        "gas_current": {
+          "high": 33,
+          "low": 34,
+          "scale": 1000
+        },
+        "gas_total": {
+          "bytes": [
+            35,
+            36,
+            37,
+            38
+          ],
+          "scale": 1000
+        },
+        "water_pressure": {
+          "dpid": 67,
+          "mask": 127,
+          "scale": 0.01
+        }
+      }
+    },
+    "WJL_002_ZYI": {
+      "name": "万家乐壁挂炉G2",
+      "modelId": "oqdqnt",
+      "family": "C",
+      "form": "native",
+      "dialect": "C",
+      "dvidCount": 42,
+      "flags": "111111000100000000",
+      "modes": [
+        {
+          "id": 0,
+          "name": "标准"
+        },
+        {
+          "id": 1,
+          "name": "ECO"
+        }
+      ],
+      "points": {
+        "dialect": "C",
+        "power": {
+          "dpid": 101,
+          "on": 1
+        },
+        "dhw_set": {
+          "dpid": 108,
+          "min": 35,
+          "max": 60
+        },
+        "dhw_current": {
+          "dpid": 106
+        },
+        "heat_set": {
+          "dpid": 109,
+          "min_floor": 25,
+          "max_floor": 60,
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": true
+        },
+        "heat_current": {
+          "dpid": 107
+        },
+        "emitter": {
+          "dpid": 112,
+          "floor": 1,
+          "radiator": 0
+        },
+        "season": {
+          "dpid": 104,
+          "winter": 0,
+          "summer": 1
+        },
+        "mode": {
+          "dpid": 151,
+          "values": {
+            "0": "标准",
+            "1": "ECO"
+          }
+        },
+        "fault": {
+          "dpid": 117,
+          "normal": 0
+        },
+        "online": {
+          "dpid": 1002
+        },
+        "status": {
+          "dpid": 102,
+          "heating_bit": 8,
+          "flame_bit": 64
+        },
+        "pump": {
+          "dpid": 113,
+          "fan_bit": 64,
+          "pump_bit": 128
+        },
+        "gas_total": {
+          "dpid": 114,
+          "scale": 256
+        },
+        "in_window": {
+          "dpid": 161,
+          "value": 1
+        },
+        "schedule_heat": {
+          "total": 154,
+          "start": [
+            118,
+            120,
+            122,
+            124,
+            126
+          ],
+          "end": [
+            119,
+            121,
+            123,
+            125,
+            127
+          ],
+          "enable": [
+            128,
+            129,
+            130,
+            131,
+            132
+          ],
+          "temp": [
+            155,
+            156,
+            157,
+            158,
+            159
+          ],
+          "next": 133
+        },
+        "diff_temp": {
+          "dpid": 110,
+          "min": 5,
+          "max": 20,
+          "assumed": true
+        }
+      }
+    }
+  }
+}

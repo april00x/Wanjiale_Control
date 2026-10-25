@@ -382,9 +382,11 @@ def resolve_features(
 ) -> Dict[str, str]:
     """计算最终启用的功能集合。
 
-    判定优先级：选项强制关闭则不启用，选项强制开启则启用；其次无条件启用项；
-    再次 probe_required 功能必须探测到点位（模板可能过度声明能力）；其余按
-    模板声明或探测命中启用；extra 补充功能（能力表未收录）必须探测到点位。
+    判定优先级：选项强制关闭则不启用，选项强制开启则启用（可越过机型白名单）；
+    其次按 `models` 机型白名单过滤（共用状态位在不同机型含义不同时使用）；
+    再次无条件启用项；再次 probe_required 功能必须探测到点位（模板可能过度声明
+    能力）；其余按模板声明或探测命中启用；extra 补充功能（能力表未收录）必须
+    探测到点位。
 
     Returns:
         {功能名: 依据说明}，说明用于日志与诊断。
@@ -405,6 +407,12 @@ def resolve_features(
             continue
         if override == OVERRIDE_ON:
             enabled[name] = "选项开启"
+            continue
+
+        allowed_models = meta.get("models")
+        if allowed_models and caps.key not in allowed_models:
+            # 状态位存在不等于支持该功能：例如 dvid95 在气泡水机型表示冷/热气，
+            # 在另一批机型表示 AI 智能。只有实测确有该入口的机型才自动启用。
             continue
 
         if name in always_on:

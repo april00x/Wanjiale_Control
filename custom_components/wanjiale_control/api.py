@@ -201,8 +201,8 @@ class WanjialeDevice:
         self._plugin: Optional[CategoryPlugin] = None
         self._plugin_ready: bool = False
 
-        # 老设备（客户端 `isOld()`）在局域网下必须发单键报文。该标志来自连接层
-        # （客户端由 Connection 携带，云端设备记录里没有），故这里默认 False，
+        # 老设备在局域网下必须发单键报文。该标志来自连接层
+        # （云端设备记录里没有），故这里默认 False，
         # 且不做探测 —— 把「鉴权失败」当成老设备会与「lanPin 错误」混淆，
         # 误判会导致绕过局域网鉴权。将来由品类插件或选项页显式置位。
         self.is_old: bool = False
@@ -687,10 +687,21 @@ class WanjialeGasWaterHeater(WanjialeDevice):
         self._ensure("UV杀菌")
         self._send_opt_pair(f001.OP_UV, f001.pack_toggle(1 if on else 0))
 
-    def set_motion(self) -> None:
-        """点动（dvid1=17），单次触发。"""
+    def set_motion(self, on: bool) -> None:
+        """水控/点动开关（dvid1=17，byte3 为 1/0）。
+
+        设备把该命令当作「水控使能」的开关，而不是一次性动作：开启后只要有水流
+        就会自动触发一次即热。因此必须同时提供关闭路径（byte3=0），否则一旦打开
+        就只能靠官方客户端或设备复位才能退出。
+        """
         self._ensure("点动循环")
-        self._send_opt_pair(f001.OP_MOTION, f001.pack_toggle(1))
+        self._send_opt_pair(f001.OP_MOTION, f001.pack_toggle(1 if on else 0))
+        # 同其它开关：先乐观更新 dvid69 的水控位，冷却期内不被滞后回包拉回
+        current = int(self.state.get(f001.DVID_MOTION) or 0)
+        self.optimistic({
+            f001.DVID_MOTION:
+                (current | f001.BIT_MOTION) if on else (current & ~f001.BIT_MOTION)
+        })
 
     def set_sterilize(self, on: bool) -> None:
         """巡航杀菌（dvid251 直接写值）。"""

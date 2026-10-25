@@ -882,7 +882,7 @@ class WanjialeProtocol:
         serial = self._next_serial()
         frame = build_business_packet(serial, json_str, self._password_md5)
 
-        _LOGGER.debug("云端下发控制 %s: %s", did, json_str)
+        _LOGGER.debug("云端下发控制 %s: %s", _short_did(did), json_str)
 
         with self._lock:
             self._ensure_connected()
@@ -930,7 +930,7 @@ class WanjialeProtocol:
         serial = self._next_serial()
         frame = build_business_packet(serial, json_str, self._password_md5)
 
-        _LOGGER.debug("云端异步下发控制 %s: %s", did, json_str)
+        _LOGGER.debug("云端异步下发控制 %s: %s", _short_did(did), json_str)
 
         with self._lock:
             self._ensure_connected()
@@ -1036,7 +1036,7 @@ class WanjialeProtocol:
             link = _LocalLink(did=did, lan_pin=lan_pin)
             self._local_links[did] = link
 
-        _LOGGER.debug("正在连接局域网设备 %s（%s:%d）", did, ip, port)
+        _LOGGER.debug("正在连接局域网设备 %s（%s:%d）", _short_did(did), ip, port)
         full_lan_pin = lan_pin + lan_pin
 
         try:
@@ -1134,7 +1134,7 @@ class WanjialeProtocol:
         if not links:
             return
 
-        _LOGGER.debug("关闭局域网连接: %s", did or "全部")
+        _LOGGER.debug("关闭局域网连接: %s", _short_did(did) if did else "全部")
         for link in links:
             link.stop_event.set()
             with link.lock:

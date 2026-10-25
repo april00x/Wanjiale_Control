@@ -101,7 +101,7 @@ OP_KEEP_WARM = 10       # 保温时长设置
 OP_DIFF_TEMP = 11       # 回差温度设置
 OP_INSTANT_HEAT = 14    # 即热 / 零冷水开关
 OP_RESERVE = 15         # 预约 / 定时开关
-OP_MOTION = 17          # 点动（单次）
+OP_MOTION = 17          # 点动 / 水控开关（开关型：byte3=1 开、0 关）
 OP_SUR = 19             # SUR 速热
 OP_CONTROL_RIGHT = 24   # 杀菌确认 / 抢占操作权
 OP_CIRCULATION = 26     # 即热循环时长设置
@@ -129,7 +129,7 @@ BIT_ZC_INSTANT_ON = 0x08          # dvid61：即热开关
 BIT_ZC_RESERVE_ON = 0x10          # dvid61：定时/预约开关
 BIT_PUMP_RUNNING = 0x02           # dvid59：水泵启动
 BIT_BOOST_MASK = 0x03             # dvid20：增压档位 0~3
-BIT_MOTION = 0x01                 # dvid69：水控开（用于点亮「点动」按钮）
+BIT_MOTION = 0x01                 # dvid69：水控开（「点动循环」开关的状态位）
 BIT_MOTION_ONCE = 0x02            # dvid69：即热一次开
 BIT_MOTION_RUNNING = 0x04         # dvid69：水控启动
 BIT_SELF_LEARN_MODE = 0x08        # dvid69：自主学习模式
@@ -615,6 +615,8 @@ def parse_state(state: Dict[str, Any]) -> Dict[str, Any]:
 #   platform        该功能落在哪个 HA 平台
 #   probe_dvids     运行时探测依据：设备上报过其中任一 dvid 即视为支持
 #   probe_required  模板声明后是否还需实机探测确认才能创建（模板可能过度声明）
+#   models          可选机型白名单（firm_product_model）：共用状态位在不同机型
+#                   含义不同时，用它把功能限定到实测确有该入口的机型
 #   requires_power  是否需要设备已开机才允许操作
 #   fault_exempt    设备故障时是否仍允许操作（仅开关机与用量清零放行）
 #   extra           不在能力表 flagOrder 中的补充功能
@@ -622,6 +624,16 @@ def parse_state(state: Dict[str, Any]) -> Dict[str, Any]:
 # probe_required 用于模板声明可能高于实机能力的功能；
 # 没有可观测点位的功能（如用量清零）无法探测，只能信任模板声明。
 # ======================================================================
+# 「冷气泡水」机型白名单：dvid95 在不同机型上含义不同（气泡水机型 bit6~7 =
+# 冷/热气；另一批机型 bit5 = AI 智能），只凭 95 上报会误建开关并下发错命令。
+# 这里只收录实测确有气泡水入口与命令（opt29 + 11）的机型。
+SPARKLING_MODELS: frozenset = frozenset({
+    "WJL_001_AEC", "WJL_001_AJT", "WJL_001_BEJ", "WJL_001_CGA", "WJL_001_DGE",
+    "WJL_001_HXI", "WJL_001_JVL", "WJL_001_KTP", "WJL_001_LNV", "WJL_001_LYI",
+    "WJL_001_ONY", "WJL_001_QNS", "WJL_001_RHV", "WJL_001_RNR", "WJL_001_RUB",
+    "WJL_001_SFX", "WJL_001_TEN", "WJL_001_VYZ", "WJL_001_WDF", "WJL_001_ZMJ",
+})
+
 FEATURES: Dict[str, Dict[str, Any]] = {
     "开关机":        {"platform": "water_heater", "probe_dvids": ("4",),    "requires_power": False, "fault_exempt": True},
     "模式切换":      {"platform": "water_heater", "probe_dvids": ("24",),   "requires_power": True},
@@ -631,7 +643,7 @@ FEATURES: Dict[str, Dict[str, Any]] = {
     "回差温度":      {"platform": "number",       "probe_dvids": ("55",),   "requires_power": True,  "probe_required": True},
     "循环时长":      {"platform": "select",       "probe_dvids": ("79",),   "requires_power": True,  "probe_required": True},
     "全天循环":      {"platform": "switch",       "probe_dvids": ("82",),   "requires_power": True,  "probe_required": True},
-    "点动循环":      {"platform": "button",       "probe_dvids": ("69",),   "requires_power": True,  "probe_required": True},
+    "点动循环":      {"platform": "switch",       "probe_dvids": ("69",),   "requires_power": True,  "probe_required": True},
     "增压":          {"platform": "switch",       "probe_dvids": ("20",),   "requires_power": True,  "probe_required": True},
     "UV杀菌":        {"platform": "switch",       "probe_dvids": ("11",),   "requires_power": True,  "probe_required": True},
     "厨房洗/定时":   {"platform": "select",       "probe_dvids": ("87",),   "requires_power": True,  "probe_required": True},
@@ -641,6 +653,6 @@ FEATURES: Dict[str, Dict[str, Any]] = {
     "优先权248":     {"platform": "internal",     "probe_dvids": (),       "requires_power": False},
     "巡航杀菌":      {"platform": "switch",       "probe_dvids": ("251",),  "requires_power": True,  "probe_required": True},
     # 能力表未收录的补充功能：无模板证据，只能在运行时探测到点位或人工开启后才创建
-    "冷气泡水":      {"platform": "switch",       "probe_dvids": ("95",),   "requires_power": True,  "extra": True},
+    "冷气泡水":      {"platform": "switch",       "probe_dvids": ("95",),   "requires_power": True, "extra": True, "models": SPARKLING_MODELS},
     "浴缸注水量":    {"platform": "number",       "probe_dvids": ("30",),   "requires_power": True,  "extra": True},
 }
