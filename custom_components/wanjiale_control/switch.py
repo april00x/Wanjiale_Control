@@ -20,7 +20,7 @@ from . import registry
 from .api import WanjialeApi, WanjialeDevice
 from .const import DOMAIN
 from .entity import WanjialeEntity
-from .specs import SwitchSpec
+from .specs import SwitchSpec, require_points_satisfied
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,10 +36,17 @@ async def async_setup_entry(
 
     entities: List[WanjialeFeatureSwitch] = []
     for dev in api.devices:
+        if not dev.controls_enabled:
+            continue                      # 控制被禁用的机型：不出控制实体
+        points = getattr(dev.caps, "model_points", None) or {}
         for spec in registry.platform_specs(dev, "switch"):
-            if not dev.has_feature(spec.feature):
+            if spec.feature and not dev.has_feature(spec.feature):
                 continue
-            for role in dev.role_views():
+            if not require_points_satisfied(spec, points):
+                continue
+            # device_level=True 的组实体直接对设备渲染（unique_id 不带角色后缀）
+            roles = [dev] if spec.device_level else dev.role_views()
+            for role in roles:
                 if not hasattr(role, spec.method):
                     continue
                 entities.append(WanjialeFeatureSwitch(dev, coordinator, role, spec))
@@ -81,5 +88,5 @@ class WanjialeFeatureSwitch(WanjialeEntity, SwitchEntity):
         self._control(self._apply, False)
 
     def _apply(self, on: bool) -> None:
-        getattr(self.role, self._spec.method)(on)
+        getattr(self.role, self._spec.method)(*self._spec.method_args, on)
         self._local_state = bool(on)

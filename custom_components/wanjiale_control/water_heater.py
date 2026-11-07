@@ -37,6 +37,8 @@ async def async_setup_entry(
 
     entities: List[WanjialeWaterHeaterEntity] = []
     for dev in api.devices:
+        if not dev.controls_enabled:
+            continue                      # 控制被禁用的机型：不出主实体
         if not dev.has_feature("开关机"):
             continue
         # 角色级平台：一台设备可能有多个实现该接口的角色

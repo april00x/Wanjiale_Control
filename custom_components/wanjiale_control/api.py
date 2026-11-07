@@ -72,18 +72,18 @@ class WanjialeControlError(Exception):
 # 品类归属与设备分类
 # ======================================================================
 def _resolve_plugin(raw: Dict[str, Any], caps: DeviceCapabilities) -> Optional[CategoryPlugin]:
-    """判定「谁认领这台设备」—— 品类归属的唯一来源。
+    """决定设备归属哪个品类插件，返回 None 表示本集成不认领。
 
     判据依次为：设备记录的 `product` 命中注册表；否则若能力表已收录该设备
     （`caps.matched`）则用认领它的品类（`caps.product`）；若命中品类把该机型声明为
-    只读（`plugin.readonly_models` 含 `caps.key`）则返回 `None` —— 这类机型确属本产品码，
+    只读（`plugin.readonly_models` 含 `caps.key`）则返回 `None`，这类机型确属本产品码，
     但活动协议是另一路体系（001 的 OYY/HPZ 属 101+ 第二路体系），按本品位下发会误控；
     若命中品类的 `requires_model_entry` 为 True 而设备未命中机型表
-    （`caps.model_points` 为空）也返回 `None` —— 防「用空点位建出可下发的主实体」；
+    （`caps.model_points` 为空）也返回 `None`，避免用空点位建出可下发的主实体；
     都不命中返回 `None`（未注册品类）。
 
-    返回 `None` 时，`_resolve_device_class` 回落通用只读基类，平台侧表现为
-    「只出 1 个原始状态诊断实体 + 拒绝下发」。
+    返回 `None` 时，`_resolve_device_class` 回落通用只读基类，平台侧只出
+    1 个原始状态诊断实体，控制一律拒绝。
     """
     ensure_plugins()
 
@@ -135,7 +135,7 @@ MAX_DEVICE_QUERY_TIMEOUT = 3.0
 # 局域网查询失败后的退避窗口（秒）。
 # 查询改「局域网优先」后，若某台设备的局域网持续不可用（设备换 IP、AP 隔离、
 # 设备离线），每轮都重试会把该轮预算全花在一次注定失败的连接上。窗口内直接走云端，
-# 窗口结束自动恢复尝试 —— 不需要用户干预，也不会因一次抖动永久放弃局域网。
+# 窗口结束自动恢复尝试，不需要用户干预，也不会因一次抖动永久放弃局域网。
 LAN_RETRY_BACKOFF_SECONDS = 300.0
 
 
@@ -203,7 +203,7 @@ class WanjialeDevice:
 
         # 老设备在局域网下必须发单键报文。该标志来自连接层
         # （云端设备记录里没有），故这里默认 False，
-        # 且不做探测 —— 把「鉴权失败」当成老设备会与「lanPin 错误」混淆，
+        # 且不做探测：把鉴权失败当成老设备，会与 lanPin 错误混淆，
         # 误判会导致绕过局域网鉴权。将来由品类插件或选项页显式置位。
         self.is_old: bool = False
 
@@ -273,8 +273,8 @@ class WanjialeDevice:
     """该角色是否对外暴露「设定温度」（`WaterHeaterProto` 的成员之一）。
 
     类级默认 `True` → 未实现该成员的角色行为不变；008 覆盖为属性
-    「该机型是否有点位 `points.temp`」——温控点随机型变，缺点位时不暴露温度控件，
-    避免出现「点了才报『该机型不支持设定温度』」的假控件。
+    「该机型是否有点位 `points.temp`」。温控点随机型变，缺点位时不暴露温度控件，
+    避免出现点了才报「该机型不支持设定温度」的假控件。
     """
 
     def role_views(self) -> List[Any]:
@@ -309,6 +309,20 @@ class WanjialeDevice:
     def has_point(self, dvid: str) -> bool:
         return str(dvid) in self.points
 
+    @property
+    def controls_enabled(self) -> bool:
+        """该机型是否开放控制（只读限制由插件声明）。
+
+        命中 `plugin.control_disabled_models` 的机型仍被认领、仍解析状态、
+        只读实体照常创建，只是控制平台跳过该设备且 `_send()` 拒绝下发。
+        未认领品类（plugin 为 None）同样视为不可控。
+        """
+        plugin = self.plugin
+        if plugin is None:
+            return False
+        key = self.caps.key
+        return not key or key not in plugin.control_disabled_models
+
     def unique_id(self) -> str:
         return f"wanjiale-{self.did}"
 
@@ -325,7 +339,7 @@ class WanjialeDevice:
     def _parse_state(self) -> None:
         """委托品类插件解析状态。
 
-        插件缺失（未注册品类）或解析抛错时降级为空字典，不让异常穿透 ——
+        插件缺失（未注册品类）或解析抛错时降级为空字典，不让异常穿透：
         单品类失败不拖垮全局，实体显示 unknown 而非整体不可用。
         """
         plugin = self.plugin
@@ -425,9 +439,11 @@ class WanjialeDevice:
         失败语义分两类：插件的契约违反（声明 `control_rights=True` 却未实现
         `encode_value("control_right")`）在 `_before_control` 内整体放弃抢权，
         不发半套帧，不影响本次控制；抢权帧的传输失败（`WanjialeControlError`）按原样向上
-        抛出、中止本次控制 —— 抢权与正式命令走同一条传输，传输坏了正式命令同样发不出去。
+        抛出、中止本次控制：抢权与正式命令走同一条传输，传输坏了正式命令同样发不出去。
         """
         self._require_plugin()
+        if not self.controls_enabled:
+            raise WanjialeControlError("该机型未开放控制")
         try:
             self._before_control()
         except WanjialeControlError:
@@ -446,23 +462,35 @@ class WanjialeDevice:
           - 品类声明使用操作权，且选项页已开启；
           - 登录名已知；
           - 设备上报过 247 点位（说明该机型使用操作权机制）；
+          - 机型在 `plugin.control_rights_models` 白名单内（白名单为空则不限制）；
           - 247 当前值不是本账号手机号（未持有）；
-          - 优先权不为 0（0 = 无优先不可控，发了也不会生效）。
+          - 优先权允许抢权：白名单命中时要求 `priority` 是整数且非 0；
+            白名单为空（001/008）维持旧判据「`priority == 0` 才拦」。
         """
         plugin = self._require_plugin()
         if not plugin.control_rights or not self.control_rights or not self.login_name:
             return
         if not self.has_point(DVID_CONTROL_RIGHT_SET):
             return
+        whitelist = plugin.control_rights_models
+        if whitelist and self.caps.key not in whitelist:
+            return
         if str(self.state.get(DVID_CONTROL_RIGHT_SET) or "") == self.login_name:
             return
-        if self.parsed.get("priority") == 0:
+        priority = self.parsed.get("priority")
+        if whitelist:
+            # 严格判据：None/非整数一律不抢，避免设备未上报优先权时误发三帧
+            if not isinstance(priority, int) or priority == 0:
+                return
+        elif priority == 0:
             return
         # 第一帧由品类插件给出（001 是「命令类型 24 + 开关值 1」的成对命令）。
         # 声明 control_rights=True 即意味着必须实现该动作；未实现则整体放弃抢权
-        # （宁可不抢，也不发半套帧）。
+        # （宁可不抢，也不发半套帧）。points 透传让 002 可按方言决定是否支持。
         try:
-            request_frame = plugin.encode_value("control_right")
+            request_frame = plugin.encode_value(
+                "control_right", points=self.caps.model_points or {}
+            )
         except Exception:  # noqa: BLE001
             _LOGGER.warning(
                 "品类 %s 声明使用操作权（control_rights=True）但未实现 "
@@ -784,7 +812,7 @@ class WanjialeGasWaterHeater(WanjialeDevice):
 class WanjialeElectricWaterHeater(WanjialeDevice):
     """万家乐电热水器（008 产品线）。
 
-    点位**全部取自 `self.caps.model_points`**（机型级，由 `capability_008.json` 的
+    点位全部取自 `self.caps.model_points`（机型级，由 `capability_008.json` 的
     `devices[*].points` 透传），本类不出现任何裸 dvid：
     控制一律经 `plugin.encode_value()`，状态一律来自 `features_008.parse_state()`。
 
@@ -851,10 +879,10 @@ class WanjialeElectricWaterHeater(WanjialeDevice):
 
     @property
     def supports_target_temperature(self) -> bool:
-        """该机型是否可设温 —— 由机型点位决定（008 没有独立的「温度」能力位）。
+        """该机型是否可设温，由机型点位决定（008 没有独立的「温度」能力位）。
 
-        温控点随机型变，缺点位时不暴露温度控件，避免出现「点了才报
-        『该机型不支持设定温度』」的假控件。
+        温控点随机型变，缺点位时不暴露温度控件，避免出现点了才报
+        「该机型不支持设定温度」的假控件。
         """
         return bool(self._point("temp"))
 
@@ -890,9 +918,9 @@ class WanjialeElectricWaterHeater(WanjialeDevice):
         self.set_power(False)
 
     def set_temperature(self, temperature: int) -> None:
-        """下发**绝对值**温度（按机型 `points.temp.min/max` 钳位）。
+        """下发绝对值温度（按机型 `points.temp.min/max` 钳位）。
 
-        门控用 `_ensure("")`：只校验「品类已收录 + 设备无故障」，不做功能门控 ——
+        门控用 `_ensure("")`：只校验品类已收录和设备无故障，不做功能门控：
         008 没有独立的「温度」能力位，而 `模式切换` 只表示模式点存在；
         是否可以设温由「该机型是否有点位」决定，避免把两个概念绑在一起。
         """
@@ -945,6 +973,639 @@ for _aux_key, _aux_feature in f008.AUX_KEY_FEATURE.items():
     if not hasattr(WanjialeElectricWaterHeater, f"set_{_aux_key}"):
         setattr(WanjialeElectricWaterHeater, f"set_{_aux_key}",
                 _make_aux_setter(_aux_feature, _aux_key))
+
+
+# ======================================================================
+# 燃气壁挂炉（002 产品线）
+# ======================================================================
+class _BoilerDhwRole:
+    """卫浴角色：water_heater 主实体 + 卫浴侧辅助开关/数值。
+
+    显式实现方法，不使用 `__getattr__`：平台按 `hasattr(role, method)` 判定实体，
+    动态兜底会让所有方法看起来都存在而误建实体。
+    """
+
+    role_suffix = "-dhw"
+    supports_mode_selection = False
+    supports_target_temperature = True
+
+    def __init__(self, dev: "WanjialeGasBoiler") -> None:
+        self._dev = dev
+
+    # ---- WaterHeaterProto ----
+    @property
+    def is_power_on(self) -> Optional[bool]:
+        return self._dev.parsed.get("power_on")
+
+    @property
+    def current_temperature(self) -> Optional[int]:
+        return self._dev.parsed.get("dhw_current_temp")
+
+    @property
+    def target_temperature(self) -> Optional[int]:
+        return self._dev.parsed.get("dhw_target_temp")
+
+    @property
+    def current_mode(self) -> Optional[int]:
+        return None
+
+    def mode_names(self) -> Dict[int, str]:
+        return {}
+
+    def min_temp(self) -> float:
+        return self._dev.dhw_min_temp()
+
+    def max_temp(self) -> float:
+        return self._dev.dhw_max_temp()
+
+    def turn_on(self) -> None:
+        self._dev.set_power(True)
+
+    def turn_off(self) -> None:
+        self._dev.set_power(False)
+
+    def set_temperature(self, temperature: int) -> None:
+        self._dev.set_dhw_temperature(temperature)
+
+    def set_mode(self, mode: int) -> None:
+        """B5（FFS）的 107 是设备模式（0 舒适/2 周计划/3 防冻）；其余机型卫浴不暴露模式。"""
+        pts = self._dev.caps.model_points or {}
+        if (pts.get("mode") or {}).get("device_mode"):
+            self._dev.set_device_mode(mode)
+            return
+        raise WanjialeControlError("壁挂炉卫浴不支持模式选择")
+
+    # ---- 卫浴辅助（switch / number / select 平台按方法名命中） ----
+    def set_instant(self, on: bool) -> None:
+        self._dev.set_instant(on)
+
+    def set_preheat(self, on: bool) -> None:
+        self._dev.set_preheat_master(on)
+
+    def set_heat_schedule(self, on: bool) -> None:
+        self._dev.set_heat_schedule_master(on)
+
+    def set_preheat_schedule(self, on: bool) -> None:
+        self._dev.set_preheat_master(on)
+
+    def set_boost(self, on: bool) -> None:
+        self._dev.set_boost(on)
+
+    def set_ai(self, on: bool) -> None:
+        self._dev.set_ai(on)
+
+    def set_sterilize(self, on: bool) -> None:
+        self._dev.set_sterilize(on)
+
+    def set_keep_warm(self, minutes: int) -> None:
+        self._dev.set_keep_warm(minutes)
+
+    def set_diff_temp(self, value: int) -> None:
+        self._dev.set_diff_temp(value)
+
+    def set_heat_diff(self, value: int) -> None:
+        self._dev.set_heat_diff(value)
+
+    def set_child_lock(self, on: bool) -> None:
+        self._dev.set_child_lock(on)
+
+    def set_morning_night(self, mode: int) -> None:
+        self._dev.set_morning_night(mode)
+
+    def reset_device(self) -> None:
+        self._dev.reset_device()
+
+    def clear_reserve_conflict(self) -> None:
+        self._dev.clear_reserve_conflict()
+
+    # ---- 档位表（select 的 options_from） ----
+    def keep_warm_options(self) -> Dict[int, str]:
+        return self._dev.keep_warm_options()
+
+    def device_mode_names(self) -> Dict[int, str]:
+        values = (self._dev.caps.model_points or {}).get("mode", {}).get("values") or {}
+        return {int(key): str(name) for key, name in values.items()}
+
+
+class _BoilerHeatingRole:
+    """供暖角色：climate 实体（供暖开关 / 设定温度 / 供暖模式）。"""
+
+    role_suffix = "-heating"
+    supports_target_temperature = True
+
+    def __init__(self, dev: "WanjialeGasBoiler") -> None:
+        self._dev = dev
+
+    @property
+    def is_power_on(self) -> Optional[bool]:
+        return self._dev.parsed.get("heating_on")
+
+    @property
+    def current_temperature(self) -> Optional[int]:
+        return self._dev.parsed.get("heat_current_temp")
+
+    @property
+    def target_temperature(self) -> Optional[int]:
+        return self._dev.parsed.get("heat_target_temp")
+
+    @property
+    def current_hvac_mode(self) -> Optional[int]:
+        value = self._dev.parsed.get("heating_on")
+        return None if value is None else (1 if value else 0)
+
+    def hvac_modes(self) -> Dict[int, str]:
+        return {0: "off", 1: "heat"}
+
+    def heating_mode_names(self) -> Dict[int, str]:
+        return dict(self._dev.caps.template_modes)
+
+    def min_temp(self) -> float:
+        return self._dev.heat_min_temp()
+
+    def max_temp(self) -> float:
+        return self._dev.heat_max_temp()
+
+    def turn_on(self) -> None:
+        self._dev.set_heating(True)
+
+    def turn_off(self) -> None:
+        self._dev.set_heating(False)
+
+    def set_temperature(self, temperature: int) -> None:
+        self._dev.set_heating_temperature(temperature)
+
+    def set_hvac_mode(self, mode: int) -> None:
+        self._dev.set_heating(bool(mode))
+
+    def set_heating(self, on: bool) -> None:
+        self._dev.set_heating(on)
+
+    def set_heating_mode(self, mode: int) -> None:
+        self._dev.set_heating_mode(mode)
+
+
+class WanjialeGasBoiler(WanjialeDevice):
+    """万家乐燃气壁挂炉（002 产品线）。
+
+    点位全部来自 `capability_002.json` 的 `devices[*].points`，取值一律经
+    `features_002.parse_state()`，控制一律经 `plugin.encode_value()`，本类不出现裸 dpid。
+
+    一台设备拆成两个角色：卫浴（`-dhw`）与供暖（`-heating`），设备对象本身不实现
+    `WaterHeaterProto`/`ClimateProto`，避免同一个 `target_temperature` 服务两个实体。
+    组实体（预约开关/温度/时间）由 `device_level=True` 的 spec 直接对设备渲染。
+
+    A 线（dialect=A）走命令字加 32 位复合包，B/C 系为单键直写，均由 `encode_value`
+    按机型点位分支处理。
+    """
+
+    platform = "water_heater"
+    category_cn = "燃气壁挂炉"
+
+    def __init__(self, protocol: WanjialeProtocol, raw_device: Dict[str, Any]) -> None:
+        super().__init__(protocol, raw_device)
+        # 不能在 __init__ 读 caps：api.load_devices() 是「先构造设备、后 bind_capabilities()」
+        self._roles: Optional[List[Any]] = None
+
+    def bind_capabilities(self, caps: DeviceCapabilities) -> None:
+        super().bind_capabilities(caps)
+        self._roles = None
+        # 只有 A 线老设备在局域网下必须发单键报文（两键会 LocalTransportUnsupported
+        # 而回退云端）；B/C 误置会把局域网多键全部误判为老设备并回退云端。
+        self.is_old = (caps.model_points or {}).get("dialect") == "A"
+
+    def role_views(self) -> List[Any]:
+        if self._roles is None:
+            pts = self.caps.model_points or {}
+            roles: List[Any] = [_BoilerDhwRole(self)]
+            # B5（FFS）没有供暖点：只返回卫浴角色，避免 climate 被误建
+            if pts.get("heat_set") or pts.get("heating"):
+                roles.append(_BoilerHeatingRole(self))
+            self._roles = roles
+        return list(self._roles)
+
+    # ------------------------------------------------------------------
+    # 机型点位视图
+    # ------------------------------------------------------------------
+    def _points(self) -> Dict[str, Any]:
+        return self.caps.model_points or {}
+
+    def _point(self, name: str) -> Dict[str, Any]:
+        item = self._points().get(name)
+        return item if isinstance(item, dict) else {}
+
+    def _thermostats(self) -> List[Dict[str, Any]]:
+        """B4 八路温控器是列表点位，不能走 `_point()`（只接受字典点位组）。"""
+        items = self._points().get("thermostats")
+        return [item for item in (items or []) if isinstance(item, dict)]
+
+    def _require(self, *names: str) -> Dict[str, Any]:
+        """按点位组存在性做最后一道保险（功能位可被选项强制打开，但不能凭空造点位）。"""
+        for name in names:
+            item = self._point(name)
+            if item:
+                return item
+        raise WanjialeControlError("该机型未配置对应点位，拒绝下发")
+
+    def _frame(self, action: str, **params: Any) -> Dict[str, str]:
+        plugin = self._require_plugin()
+        params.setdefault("points", self._points())
+        try:
+            return plugin.encode_value(action, **params)
+        except ValueError as err:
+            # 平台层只捕获 WanjialeControlError，这里统一转换，避免裸 ValueError
+            raise WanjialeControlError(str(err)) from err
+
+    def _commit(self, frame: Dict[str, str], optimistic: bool = True) -> None:
+        """下发并更新状态缓存。
+
+        A 线 `{1, 2}` 是命令通道、不是状态点，写进 state 既不会更新目标温度，
+        又会在冷却期污染状态缓存；只有 `{4: 0/1}` 这类真实状态点才做乐观更新。
+        """
+        self._send(frame)
+        if self._points().get("dialect") == "A":
+            if optimistic and set(frame) == {"4"}:
+                self.optimistic(frame)
+            else:
+                self._mark_control()
+            return
+        if optimistic:
+            self.optimistic(frame)
+        else:
+            self._mark_control()
+
+    def _mark_control(self) -> None:
+        """只更新时间戳，让 CONTROL_COOLDOWN 生效，不把命令帧写进 state。"""
+        self._last_control_time = time.time()
+
+    # ------------------------------------------------------------------
+    # 温度量程（数据驱动，不写死 30~80/25~60）
+    # ------------------------------------------------------------------
+    def dhw_min_temp(self) -> float:
+        return float(self._point("dhw_set").get("min", 35))
+
+    def dhw_max_temp(self) -> float:
+        return float(self._point("dhw_set").get("max", 60))
+
+    def _heat_range(self) -> tuple:
+        spec = self._point("heat_set")
+        low_floor = float(spec.get("min_floor", spec.get("min", 25)))
+        high_floor = float(spec.get("max_floor", spec.get("max", 60)))
+        low_radiator = float(spec.get("min_radiator", low_floor))
+        high_radiator = float(spec.get("max_radiator", high_floor))
+
+        emitter = self.parsed.get("emitter")
+        emitter_pt = self._point("emitter")
+        if emitter_pt:
+            if emitter is not None and emitter == emitter_pt.get("radiator"):
+                return low_radiator, high_radiator
+            if emitter is not None and emitter == emitter_pt.get("floor"):
+                return low_floor, high_floor
+        elif emitter is not None and emitter == self._point("heating").get("range_radiator_value"):
+            # 1=散热片，值来自能力表
+            return low_radiator, high_radiator
+        # 末端未知时取地暖范围（更保守，避免下发超出设备允许的上限）
+        return low_floor, high_floor
+
+    def heat_min_temp(self) -> float:
+        return float(self._heat_range()[0])
+
+    def heat_max_temp(self) -> float:
+        return float(self._heat_range()[1])
+
+    def keep_warm_options(self) -> Dict[int, str]:
+        """保温档位表：键为分钟数（select 用分钟作为选项值）。"""
+        spec = self._point("keep_warm")
+        levels = spec.get("levels") or []
+        mapping = spec.get("map") if isinstance(spec.get("map"), dict) else None
+        unit = int(spec.get("unit_min") or 1)
+        zero_meaning = str(spec.get("zero_meaning") or "unknown")
+        zero_label = {"instant_once": "即热一次", "cycle_once": "循环一次"}.get(
+            zero_meaning, "0（未知）"
+        )
+        options: Dict[int, str] = {}
+        for level in levels:
+            level = int(level)
+            if mapping is not None:
+                minutes = mapping.get(str(level))
+                if minutes is None:
+                    continue
+                minutes = int(minutes)
+            else:
+                minutes = level * unit
+            options[minutes] = zero_label if minutes == 0 else f"{minutes} 分钟"
+        return options
+
+    # ------------------------------------------------------------------
+    # 主实体控制
+    # ------------------------------------------------------------------
+    def set_power(self, on: bool) -> None:
+        self._ensure("开关机")
+        self._require("power")
+        self._commit(self._frame("power", on=bool(on)))
+
+    def turn_on(self) -> None:
+        self.set_power(True)
+
+    def turn_off(self) -> None:
+        self.set_power(False)
+
+    def set_dhw_temperature(self, temperature: int) -> None:
+        self._ensure("卫浴温度")
+        spec = self._require("dhw_set")
+        low = int(spec.get("min", 35))
+        high = int(spec.get("max", 60))
+        value = max(low, min(high, int(round(float(temperature)))))
+        params: Dict[str, Any] = {}
+        if self._points().get("dialect") == "A":
+            # A 线 cmd4 的复合包需要沿用当前卫浴模式 / 水流 / 水量（未知时 0xFF 不修改）
+            params = {
+                "mode": self.parsed.get("dhw_mode"),
+                "flow": self.parsed.get("target_flow"),
+                "volume": self.parsed.get("target_volume"),
+            }
+        self._commit(self._frame("dhw_temp", value=value, **params))
+
+    def set_heating_temperature(self, temperature: int) -> None:
+        self._ensure("供暖温度")
+        self._require("heat_set")
+        low, high = self._heat_range()
+        value = max(int(low), min(int(high), int(round(float(temperature)))))
+        self._commit(self._frame("heat_temp", value=value))
+
+    def set_heating(self, on: bool) -> None:
+        if on and self.parsed.get("power_on") is False:
+            raise WanjialeControlError("请先开机")
+        self._ensure("供暖开关")
+        if not (self._point("heating") or self._point("season")):
+            raise WanjialeControlError("该机型未配置供暖开关点位，拒绝下发")
+        self._commit(self._frame("heating", on=bool(on)))
+
+    def set_heating_mode(self, mode: int) -> None:
+        self._ensure("供暖模式")
+        self._require("mode")
+        self._commit(self._frame("mode", mode=int(mode)))
+
+    def set_device_mode(self, mode: int) -> None:
+        """B5（FFS）设备模式（0 舒适/2 周计划/3 防冻）。"""
+        spec = self._point("mode")
+        if not spec.get("device_mode"):
+            raise WanjialeControlError("该机型不支持设备模式")
+        self._commit(self._frame("mode", mode=int(mode)))
+
+    # ------------------------------------------------------------------
+    # 辅助开关
+    # ------------------------------------------------------------------
+    def set_instant(self, on: bool) -> None:
+        self._ensure("即热")
+        self._require("instant_mode", "instant")
+        params: Dict[str, Any] = {}
+        if self._points().get("dialect") == "A":
+            # 部分 A 机型 cmd14 采用「on/off + 温度」形态，温度未知时写 0xFF 不修改
+            params["temp"] = self.parsed.get("dhw_target_temp")
+        self._commit(self._frame("instant", on=bool(on), **params))
+
+    def set_preheat_master(self, on: bool) -> None:
+        self._ensure("热水预热")
+        spec = self._point("schedule_dhw")
+        if spec.get("total") is None and not spec.get("master_cmd"):
+            raise WanjialeControlError("该机型未配置热水预热总开关点位")
+        params: Dict[str, Any] = {}
+        if self._points().get("dialect") == "A":
+            params["temp"] = self.parsed.get("dhw_target_temp")
+        self._commit(self._frame("preheat_master", on=bool(on), **params))
+
+    def set_preheat(self, on: bool) -> None:
+        self.set_preheat_master(on)
+
+    def set_heat_schedule_master(self, on: bool) -> None:
+        self._ensure("预约供暖")
+        spec = self._point("schedule_heat")
+        if spec.get("total") is None and not spec.get("master_cmd"):
+            raise WanjialeControlError("该机型未配置预约供暖总开关点位")
+        params: Dict[str, Any] = {}
+        if self._points().get("dialect") == "A":
+            params["temp"] = self.parsed.get("dhw_target_temp")
+        self._commit(self._frame("heat_schedule_master", on=bool(on), **params))
+
+    def set_boost(self, on: bool) -> None:
+        self._ensure("增压")
+        self._require("boost")
+        self._commit(self._frame("boost", on=bool(on)))
+
+    def set_ai(self, on: bool) -> None:
+        self._ensure("AI")
+        self._require("ai")
+        self._commit(self._frame("ai", on=bool(on)))
+
+    def set_sterilize(self, on: bool) -> None:
+        self._ensure("杀菌")
+        self._require("sterilize")
+        self._commit(self._frame("sterilize", on=bool(on)))
+
+    def set_child_lock(self, on: bool) -> None:
+        self._ensure("童锁")
+        self._require("child_lock")
+        self._commit(self._frame("child_lock", on=bool(on)))
+
+    # ------------------------------------------------------------------
+    # 补充方案：末端 / ECO / 外出 / 即热时长 / 洗浴预约总开关 / 点动
+    # ------------------------------------------------------------------
+    def _require_power_on(self) -> None:
+        """显式待机门控。
+
+        `_ensure("")` 只做品类/故障门控，`feature_requires_power("")` 恒为 False，
+        不会拦待机；补充方案的 setter 统一在 `_ensure("")` 后追加本检查。
+        """
+        if self.parsed.get("power_on") is False:
+            raise WanjialeControlError("设备处于待机状态，请先开机")
+
+    def set_emitter(self, value: int) -> None:
+        """采暖末端：A 线 cmd43 复合包 / B3 直写 120。"""
+        self._ensure("")
+        self._require_power_on()
+        self._require("heating", "emitter")
+        params: Dict[str, Any] = {}
+        emitter_cmd = self._point("heating").get("emitter_cmd") or {}
+        if emitter_cmd.get("with_temp"):
+            # 仅带温度/回差形态需要当前 94/97；YJW 只发末端，不要求这两个值
+            params["heat_temp"] = self.parsed.get("heat_target_temp")
+            params["heat_diff"] = self.parsed.get("diff_heat")
+        self._commit(self._frame("emitter", value=int(value), **params), optimistic=False)
+
+    def set_eco(self, on: bool) -> None:
+        """节能/睡眠（仅 A 线 cmd38）。"""
+        self._ensure("")
+        self._require_power_on()
+        self._require("heating")
+        self._commit(self._frame("eco", on=bool(on)), optimistic=False)
+
+    def set_away(self, on: bool) -> None:
+        """外出（FFY/WLK cmd44，无读点）。"""
+        self._ensure("")
+        self._require_power_on()
+        self._require("away_cmd")
+        self._commit(self._frame("away", on=bool(on)), optimistic=False)
+
+    def set_circulation(self, value: int) -> None:
+        """即热时长：A 线 cmd26 / B3 直写 118。"""
+        self._ensure("")
+        self._require_power_on()
+        self._require("circulation")
+        self._commit(self._frame("circulation", value=int(value)), optimistic=False)
+
+    def set_wash_master(self, on: bool) -> None:
+        """洗浴预约总开关（XQZ 116）。"""
+        self._ensure("")
+        self._require_power_on()
+        sched = self._require("schedule_wash")
+        if (sched.get("master") or {}).get("dpid") in (None, ""):
+            raise WanjialeControlError("该机型未配置洗浴预约总开关")
+        self._commit(self._frame("wash_master", on=bool(on)), optimistic=False)
+
+    def set_jog(self, on: bool) -> None:
+        """点动：仅 B3 的 jog(117, writable)；A 线 68 只读，拒绝下发。"""
+        self._ensure("")
+        self._require_power_on()
+        if self._point("jog").get("writable") is not True:
+            raise WanjialeControlError("该机型点动状态只读，拒绝下发")
+        self._commit(self._frame("jog", on=bool(on)), optimistic=False)
+
+    # ------------------------------------------------------------------
+    # 数值
+    # ------------------------------------------------------------------
+    def set_keep_warm(self, minutes: int) -> None:
+        self._ensure("保温时长")
+        self._require("keep_warm")
+        self._commit(self._frame("keep_warm", minutes=int(minutes)))
+
+    def set_diff_temp(self, value: int) -> None:
+        self._ensure("回差温度")
+        self._require("diff_temp", "diff_dhw")
+        self._commit(self._frame("diff", kind="dhw", value=int(value)))
+
+    def set_heat_diff(self, value: int) -> None:
+        self._ensure("回差温度")
+        self._require("diff_heat")
+        self._commit(self._frame("diff", kind="heat", value=int(value)))
+
+    # ------------------------------------------------------------------
+    # 预约组编辑（设备级；spec 通过 method_args 传 kind/group 或 n）
+    # ------------------------------------------------------------------
+    _SCHEDULE_FEATURE = {"heat": "预约供暖", "dhw": "热水预热", "wash": None}
+
+    def _schedule_item(self, kind: str) -> Dict[str, Any]:
+        item = self._point(f"schedule_{kind}")
+        if not item:
+            raise WanjialeControlError(f"该机型未配置预约组点位：{kind}")
+        return item
+
+    def set_schedule_time(self, kind: str, group: int, field: str, minutes: int) -> None:
+        feature = self._SCHEDULE_FEATURE.get(kind)
+        if feature:
+            self._ensure(feature)
+        sched = self._schedule_item(kind)
+        params: Dict[str, Any] = {
+            "kind": kind, "group": int(group), "field": str(field), "minutes": int(minutes),
+        }
+        # A 线与 B3 洗浴预约都是「同组起止整包」，必须先从回读值取另一端，拿不到就报错
+        packed_group = kind == "wash" and bool(sched.get("packed"))
+        if self._points().get("dialect") == "A" or packed_group:
+            other_field = "end" if str(field) == "start" else "start"
+            other = self.parsed.get(f"{kind}_schedule_{int(group)}_{other_field}")
+            if other is None:
+                raise WanjialeControlError(
+                    "未回读到该组另一端时间，已取消写入（避免只写半个预约包）"
+                )
+            params["other_minutes"] = int(other)
+        frame = self._frame("schedule_time", **params)
+        # 组时间可能是只写点位（JJY/LLF 的 129~132），不做乐观更新
+        self._commit(frame, optimistic=False)
+
+    def set_schedule_enable(self, kind: str, group: int, on: bool) -> None:
+        feature = self._SCHEDULE_FEATURE.get(kind)
+        if feature:
+            self._ensure(feature)
+        self._schedule_item(kind)
+        frame = self._frame("schedule_enable", kind=kind, group=int(group), on=bool(on))
+        self._commit(frame, optimistic=False)
+
+    def set_schedule_temp(self, kind: str, group: int, value: int) -> None:
+        feature = self._SCHEDULE_FEATURE.get(kind)
+        if feature:
+            self._ensure(feature)
+        self._schedule_item(kind)
+        frame = self._frame("schedule_temp", kind=kind, group=int(group), value=int(value))
+        self._commit(frame)
+
+    def set_schedule_delete(
+        self, kind: str, group: int, packed_value: Optional[int] = None
+    ) -> None:
+        feature = self._SCHEDULE_FEATURE.get(kind)
+        if feature:
+            self._ensure(feature)
+        if self._points().get("dialect") == "A" and packed_value is None:
+            # A 线删除同样需要整组起止；从 list 回读值合成，不写半包
+            start = self.parsed.get(f"{kind}_schedule_{int(group)}_start")
+            end = self.parsed.get(f"{kind}_schedule_{int(group)}_end")
+            if start is None or end is None:
+                raise WanjialeControlError("未回读到该组的起止时间，已取消删除")
+            packed_value = (int(start) << 16) | int(end)
+        frame = self._frame(
+            "schedule_delete", kind=kind, group=int(group), packed_value=packed_value
+        )
+        self._commit(frame, optimistic=False)
+
+    def delete_wash_schedule(self) -> None:
+        """RTF 洗浴预约删除：从回读的起止分钟重算 packed 值下发到 104。
+
+        删除值按「与写入相同的 packed 值」下发；
+        回读不到当前起止时不写，避免误删别的组。
+        """
+        sched = self._point("schedule_wash")
+        if not sched.get("delete"):
+            raise WanjialeControlError("该机型不支持洗浴预约删除")
+        start = self.parsed.get("wash_schedule_1_start")
+        end = self.parsed.get("wash_schedule_1_end")
+        if start is None or end is None:
+            raise WanjialeControlError("未回读到洗浴预约时间，已取消删除")
+        start_h, start_m = divmod(int(start), 60)
+        end_h, end_m = divmod(int(end), 60)
+        packed = ((start_h + start_m * 256) & 0xFFFF) | ((end_h + end_m * 256) << 16)
+        self.set_schedule_delete("wash", 1, packed)
+
+    def set_thermostat(self, n: int, on: bool) -> None:
+        """B4 八路温控器开关（设定温度只读、配对/编号管理不做）。"""
+        if not self._thermostats():
+            raise WanjialeControlError("该机型不支持温控器控制")
+        self._commit(self._frame("thermostat", n=int(n), on=bool(on)), optimistic=False)
+
+    # ------------------------------------------------------------------
+    # A 线专属动作（编码已在 features_002 落地）
+    # ------------------------------------------------------------------
+    def set_morning_night(self, mode: int) -> None:
+        self._ensure("晨浴夜浴")
+        self._require("morning_night")
+        self._commit(self._frame("morning_night", mode=int(mode)), optimistic=False)
+
+    def reset_device(self) -> None:
+        self._ensure("复位")
+        self._require("reset")
+        self._commit(self._frame("reset"), optimistic=False)
+
+    def clear_reserve_conflict(self) -> None:
+        self._ensure("预约冲突清除")
+        self._require("conflict")
+        self._commit(self._frame("conflict"), optimistic=False)
+
+    # ------------------------------------------------------------------
+    # 状态视图（只读；实体取值走 parsed）
+    # ------------------------------------------------------------------
+    @property
+    def fault_code(self) -> Optional[int]:
+        return self.parsed.get("fault")
+
+    def query_status(self) -> Dict[str, Any]:
+        return self._protocol.query_device(self.did)
 
 
 # ======================================================================
@@ -1023,7 +1684,7 @@ class WanjialeApi:
         """首次状态刷新后确定各设备的功能集合（实体创建的依据）。
 
         本方法在 executor 里执行（`async_setup_entry` 用 `async_add_executor_job` 调用），
-        因此在末尾顺带预热故障文案表 —— 否则实体首次写状态时会在事件循环里
+        因此在末尾顺带预热故障文案表，否则实体首次写状态时会在事件循环里
         同步读 `faults_*.json`，被 HA 记为阻塞调用（见 `capabilities.preload_faults`）。
         """
         for dev in self._devices:

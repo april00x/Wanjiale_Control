@@ -10,35 +10,41 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 
 @dataclass(frozen=True)
 class SwitchSpec:
     """一个开关功能到设备/角色能力的映射。"""
 
-    feature: str                        # 能力名（决定是否创建实体）
+    feature: Optional[str]              # 能力名（决定是否创建实体）；None = 只按点位生成
     key: str                            # unique_id 短键
     name: str                           # 实体名
     icon: str
-    method: str                         # 角色上的控制方法名（`set_xxx(on: bool)`）
+    method: str                         # 角色上的控制方法名（`set_xxx(*method_args, on)`）
     state_key: Optional[str] = None     # parsed 中的状态键；None 表示状态不可靠
     assumed: bool = False               # 状态位未经验证时置 True，UI 显示为可切换按钮
+    device_level: bool = False          # True = 直接对设备渲染（组实体/温控器），不进角色
+    require_points: Tuple[str, ...] = ()  # 点位路径（如 ("schedule_heat.enable",)）
+    method_args: Tuple[Any, ...] = ()   # 调用方法时预绑定的参数（如 ("heat", 3)）
 
 
 @dataclass(frozen=True)
 class NumberSpec:
-    feature: str
+    feature: Optional[str]
     key: str
     name: str
     icon: str
-    method: str                         # `set_xxx(int)`
+    method: str                         # `set_xxx(*method_args, int)`
     state_key: str
     min_value: float
     max_value: float
     step: float
     unit: Optional[str] = None
     scale: int = 1                      # 设备值 × scale = 对外值（如浴缸注水量以 10L 为单位）
+    device_level: bool = False
+    require_points: Tuple[str, ...] = ()
+    method_args: Tuple[Any, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -51,14 +57,17 @@ class SelectSpec:
     不同），只能用这种方式。
     """
 
-    feature: str
+    feature: Optional[str]
     key: str
     name: str
     icon: str
-    method: str                         # `set_xxx(int)`
+    method: str                         # `set_xxx(*method_args, int)`
     state_key: str
     options: Optional[Dict[int, str]] = None
     options_from: Optional[str] = None
+    device_level: bool = False
+    require_points: Tuple[str, ...] = ()
+    method_args: Tuple[Any, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -68,9 +77,30 @@ class ButtonSpec:
     key: str
     name: str
     icon: str
-    method: str                         # `method()` 无参
+    method: str                         # `method(*method_args)`
     feature: Optional[str] = None       # 依赖的能力名；None 表示按点位判断
     require_point: Optional[str] = None
+    device_level: bool = False
+    require_points: Tuple[str, ...] = ()
+    method_args: Tuple[Any, ...] = ()
+
+
+@dataclass(frozen=True)
+class ScheduleTimeSpec:
+    """预约组起/止时间（HA `time` 平台，设备级）。
+
+    002 的供暖/热水预约按组拆分：`kind` 决定语义与显示名前缀，
+    `state_key` 指向 `parse_state` 输出的分钟值键。
+    """
+
+    kind: str        # "heat" / "dhw" / "wash"
+    group: int       # 1~5
+    field: str       # "start" / "end"
+    dpid: str
+    feature: Optional[str]     # "预约供暖" / "热水预热"；None = 只按点位生成
+    state_key: str
+    label: str = ""  # 可选显示名前缀；HQJ 的 dhw 组填「热水定时」
+
 
 
 @dataclass(frozen=True)
@@ -106,9 +136,28 @@ SPEC_TYPES = {
     "button": ButtonSpec,
     "sensor": SensorSpec,
     "binary_sensor": BinarySensorSpec,
+    "time": ScheduleTimeSpec,
 }
 
 
 def spec_keys(specs: List[object]) -> List[str]:
     """取出 spec 的短键列表（供测试断言 unique_id 拼接）。"""
     return [str(getattr(spec, "key", "")) for spec in specs]
+
+
+def require_points_satisfied(spec: object, points: Mapping[str, Any]) -> bool:
+    """`spec.require_points` 是否全部存在（点位路径用点号分隔）。
+
+    用于「同一功能位下按点位存在性过滤」：例如 B3 的洗浴预约没有供暖 `total`，
+    不能据此创建供暖预约主开关。路径不存在（None/空串/空容器）即视为不满足。
+    """
+    paths = getattr(spec, "require_points", ()) or ()
+    for path in paths:
+        node: Any = points
+        for part in str(path).split("."):
+            if not isinstance(node, Mapping) or part not in node:
+                return False
+            node = node[part]
+        if node is None or node == "" or node == [] or node == {}:
+            return False
+    return True

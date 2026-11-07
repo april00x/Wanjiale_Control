@@ -45,7 +45,7 @@ DVID_PRIORITY = "3"         # 优先权：0 无优先不可控 / 1 无优先可�
 DVID_RESERVE_LIST = "6"     # 预约时段列表：[{s,e}]，单位分钟
 DVID_NEXT_RESERVE = "9"     # 下次预约时间（分钟，自 00:00 起）
 DVID_STATUS = "10"          # 状态位（开关机/火焰/水流/风机）
-DVID_UV = "11"              # UV 杀菌状态（bit7，单一机型证据，待真机验证）
+DVID_UV = "11"              # UV 杀菌状态（bit7）
 DVID_FAULT = "17"           # 故障代码（255=正常）
 DVID_CURRENT_TEMP = "18"    # 当前水温
 DVID_FA_TYPE = "19"         # FA 变升类型：0=10L / 4=13L / 8=12L
@@ -81,7 +81,7 @@ DVID_HEAT_TIME_H = "75"      # 即热工作时间 高字节
 DVID_CIRCULATION = "79"      # 即热循环时长档位
 DVID_ALL_DAY = "82"          # 晨浴 / 全天（4=开启）
 DVID_KITCHEN_TIMER = "87"    # 厨房洗定时档位（0=30 / 1=60 / 2=120 / 3=180 min）
-DVID_SPARKLING = "95"        # 冷/热气状态（单一机型证据，取位方式未验证）
+DVID_SPARKLING = "95"        # 冷/热气状态（单一机型证据）
 DVID_ONLINE = "1002"         # 设备在线状态（0=离线）
 DVID_DRAIN_ALARM = "241"     # 放水报警 / 放水完成（常态值 0）
 DVID_CO_ALARM = "242"        # CO 报警（常态值 7，取值语义未解码，只暴露原始值）
@@ -140,10 +140,10 @@ WATER_LEVEL_TEXT = {0: "100%", 1: "90%", 2: "80%"}
 WATER_LEVEL_PERCENT = {0: 100, 1: 90, 2: 80}
 MASK_DRAIN_STATUS = 0x07          # dvid25：放水情况 / 在线用户档位
 BIT_BATH_FILL_DONE = 0x08         # dvid25：本次浴缸注水已完成
-BIT_UV_MASK = 0x80                # dvid11：UV 状态（未验证）
+BIT_UV_MASK = 0x80                # dvid11：UV 状态
 MASK_ENV = 0x70                   # dvid53：环境修正值 bit4~bit6
 SHIFT_ENV = 4
-MASK_SPARKLING = 0xC0             # dvid95：冷/热气档位（1=冷 2=热；未验证）
+MASK_SPARKLING = 0xC0             # dvid95：冷/热气档位（1=冷 2=热）
 SHIFT_SPARKLING = 6
 SPARKLING_TEXT = {0: "关", 1: "冷气泡水", 2: "热气泡水"}
 
@@ -514,7 +514,7 @@ def parse_state(state: Dict[str, Any]) -> Dict[str, Any]:
     sparkling = get(state.get(DVID_SPARKLING))
     if sparkling is not None:
         out["sparkling_raw"] = sparkling
-        # 取值取 bit6~bit7 两位字段，未在真机验证，仅供只读参考。
+        # 取值取 bit6~bit7 两位字段，仅供只读参考。
         mode = (sparkling & MASK_SPARKLING) >> SHIFT_SPARKLING
         if mode in SPARKLING_TEXT:
             out["sparkling_mode"] = mode

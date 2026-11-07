@@ -77,11 +77,18 @@ def _has_fault_point(dev: WanjialeDevice, plugin) -> bool:
 
     - 插件声明了云端来源（`fault_points["cloud"]`，如 `"fids"`）：故障随云端下发、
       恒可产出（008 多数机型正是这种：无设备故障点，故障只在 `fids` 里）；
+    - 机型表声明了 `points.fault.dpid`：按该机型自己的故障点判断。002 的故障点
+      在各方言下是 17/117/108/116/151，其中 108/151 在别的机型是设定温度/模式，
+      不能用并集判定；
     - 否则看设备是否上报了声明的设备故障点位（001 走这条）。
     """
     declared = plugin.fault_points or {}
     if declared.get("cloud"):
         return True
+    points = getattr(dev.caps, "model_points", None) or {}
+    fault = points.get("fault")
+    if isinstance(fault, dict) and isinstance(fault.get("dpid"), int):
+        return dev.has_point(str(fault["dpid"]))
     return any(dev.has_point(str(point)) for point in (declared.get("device") or ()))
 
 

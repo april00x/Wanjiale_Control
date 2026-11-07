@@ -1,11 +1,11 @@
 """008 电热水器 · 品类语义层（与 `features_001.py` 对应）。
 
 职责：
-  - `FEATURES`：功能元数据（键必须覆盖 `capability_008.json` 的**全部** `flagOrder` 词）；
+  - `FEATURES`：功能元数据（键必须覆盖 `capability_008.json` 的全部 `flagOrder` 词）；
   - `parse_state(state, fids, profile)`：按 `profile["points"]`（机型级点位）解析统一语义字段；
   - `encode_value(action, **params)`：语义动作 → `{dpid: 绝对字符串}`（只做值计算，不含报文信封）。
 
-**本文件不含任何全局 dpid 常量**：008 的开关/模式/温度/热水量/水温/故障/辅助开关点位
+本文件不含任何全局 dpid 常量：008 的开关/模式/温度/热水量/水温/故障/辅助开关点位
 全部随机型变，一律从 `profile["points"]` 取（由 `capabilities.resolve()` 从
 `capability_008.json` 的 `devices[*].points` 透传）。
 跨机型推断是红线：同一 dpid 在不同机型语义可能互斥。
@@ -88,7 +88,7 @@ def _fault_title(model_key: Optional[str], fault_id: int) -> Optional[str]:
     """按机型主键查故障文案标题（查不到返回 None）。
 
     `features_008` 被 `categories/008/plugin.py` 导入，而后者由 `capabilities`
-    在运行期加载，模块级导入 capabilities 会成环，故此处**函数内**惰性导入。
+    在运行期加载，模块级导入 capabilities 会成环，故在函数内惰性导入。
     """
     if not model_key:
         return None
@@ -229,7 +229,7 @@ def _require_point(points: Dict[str, Any], name: str) -> Dict[str, Any]:
 def encode_value(action: str, **params: Any) -> Dict[str, str]:
     """把语义动作编码成 `{dpid: 绝对字符串}`（不含报文信封）。
 
-    008 一律**单点直写绝对值**，无成对复合包；点位取自 `params["points"]`
+    008 一律单点直写绝对值，无成对复合包；点位取自 `params["points"]`
     （机型级 `devices[*].points`），故本层不出现任何全局 dpid。
 
     支持动作：

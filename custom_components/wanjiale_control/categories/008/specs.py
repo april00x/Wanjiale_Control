@@ -1,6 +1,6 @@
-"""008 电热水器 · 各平台 spec 表（按**设备**动态生成）。
+"""008 电热水器 · 各平台 spec 表（按设备动态生成）。
 
-与 001 的静态表不同：008 的实体**名单本身**随机型变（不同机型开关不同、dpid 与
+与 001 的静态表不同：008 的实体名单本身随机型变（不同机型开关不同、dpid 与
 中文标签都不同），静态表装不下，故 `PLATFORM_SPECS` 的值是 `Callable[[device], Tuple[Spec, ...]]`
 （由核心的 `registry._resolve_specs()` 解析）。
 
@@ -73,7 +73,7 @@ def sensor_specs(device: Any) -> Tuple[SensorSpec, ...]:
     """当前热水量 / 当前水温 / 运行状态，dpid 取机型实际点位。
 
     实体创建仍由 `dev.has_point(spec.dvid)` 门控：008 的 `base_points` 为空，
-    点位集合只含**实测**点位，故设备首轮上报后实体才出现。
+    点位集合只含实测点位，故设备首轮上报后实体才出现。
 
     「运行状态」是文本型（`status_text` = 加热中/保温中/待机中，随机型变），
     故意不声明 `device_class`：HA 的 enum 类要求状态值必须落在 `options` 里，而
@@ -114,8 +114,8 @@ def sensor_specs(device: Any) -> Tuple[SensorSpec, ...]:
 def binary_sensor_specs(device: Any) -> Tuple[BinarySensorSpec, ...]:
     """加热中 / 保温中（同一个状态点派生的两条互斥二元状态）。
 
-    状态点来自机型级 `points.status`；「其余」档（待机）不单独出实体
-    ——它等于这两条都为 off，关机则由主实体的 on/off 表达。
+    状态点来自机型级 `points.status`；「其余」档（待机）不单独出实体，
+    它等于这两条都为 off，关机则由主实体的 on/off 表达。
 
     缺点位的机型（CKQ/AVX/DXV/GOX）返回空表；
     只读机型的插件为 None，平台侧不会走到这里。

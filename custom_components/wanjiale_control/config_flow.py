@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import config_validation as cv
 
-from .capabilities import feature_options
+from .capabilities import feature_options, feature_options_migrate
 from .const import (
     CONF_ENABLE_CONTROL_RIGHTS,
     CONF_FEATURE_FORCE_OFF,
@@ -104,7 +104,9 @@ class WanjialeOptionsFlow(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data=user_input)
 
         options = self.config_entry.options
-        # 值=裸功能名（与已存选项一致），标签=「品类:功能」（多品类下区分同名功能）
+        # 值 = "{product}:{feature}"，标签 =「品类:功能」（多品类下区分同名功能）。
+        # 已存选项可能是旧裸功能名，必须先迁移为带前缀的键，否则不在选项集中的
+        # default 会被 cv.multi_select 校验失败（HA 的 vol.In 拒绝未知默认值）。
         choices = feature_options()
         schema = vol.Schema(
             {
@@ -114,11 +116,11 @@ class WanjialeOptionsFlow(config_entries.OptionsFlow):
                 ): bool,
                 vol.Optional(
                     CONF_FEATURE_FORCE_ON,
-                    default=list(options.get(CONF_FEATURE_FORCE_ON, [])),
+                    default=feature_options_migrate(options.get(CONF_FEATURE_FORCE_ON, [])),
                 ): cv.multi_select(choices),
                 vol.Optional(
                     CONF_FEATURE_FORCE_OFF,
-                    default=list(options.get(CONF_FEATURE_FORCE_OFF, [])),
+                    default=feature_options_migrate(options.get(CONF_FEATURE_FORCE_OFF, [])),
                 ): cv.multi_select(choices),
             }
         )

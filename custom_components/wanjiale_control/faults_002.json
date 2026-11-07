@@ -1,9 +1,8 @@
 {
   "schemaVersion": "1.0",
   "_meta": {
-    "source": "build_capability_002.py（faults.csv 优先 index.js + 已知 B3/HQJ/B2c 映射）",
     "normalization": "正常值跳过；0/255 且不等于正常值的键写成 256+raw",
-    "guideSource": "AOB faults.json（按显示码匹配，不按 id 反推 dpid）"
+    "guideSource": "按显示码匹配，不按 id 反推 dpid"
   },
   "devices": {
     "WJL_002_AJF": {

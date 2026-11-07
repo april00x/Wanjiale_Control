@@ -23,9 +23,8 @@
   "_meta": {
     "scope": "category=燃气壁挂炉",
     "keyField": "firm_product_model（如 WJL_002_AJF）",
-    "source": "build_capability_002.py（deep002 CSVs + catalog_models.csv）",
     "deviceCount": 46,
-    "trfExcluded": "TRF 无资源包，未收录",
+    "trfExcluded": "TRF 无机型数据，未收录",
     "flagOrder": [
       "开关机",
       "卫浴温度",
@@ -48,15 +47,24 @@
     ],
     "notes": [
       "B5（FFS）：106=童锁、107=模式可写（select 0/2/3）、102=当前温度、104=实际温度；无 fault 键。",
-      "B5 的 readDpids 是 config.xml 模板残留，102~107 以 index.js 证据为准。",
-      "B2c：116=故障、150 只读并作为保温 sensor、128~132 仅存点位；134~148/153 作为热水预热；109 为共享预约温度。",
-      "A 线：供暖量程逐机型取 sliders（多行时最小=地暖、最大=散热片）；无证据时标 assumed。",
+      "B5 的点位以 102~107 为准，readDpids 中其余键是打包模板残留，不采用。",
+      "B2c：116=故障；150 以 keep_warm_readonly 存储（来源 readDpids，assumed），只读并作为保温 sensor，不生成可写 keep_warm；128~132 仅存点位；134~148/153 作为热水预热；109 为共享预约温度。",
+      "供暖量程：B/C 取「散热地暖」成对行（最小=地暖、最大=散热片），未被注释的 30~80 行补散热片上界；A 线只取「供暖」行，无证据时标 assumed。",
+      "A 线预约：单命令增删（洗浴 7/8、供暖 271/272）+ groups=5；回读走 list（6/270，JSON 数组字符串），洗浴主开关 cmd15、供暖主开关 cmd40。",
+      "A 线洗浴预约复用「热水预热」功能位（App 文案是「洗浴预约」），实体名用「洗浴预约n」；README 需说明两者是同一功能位。",
+      "keep_warm.zero_meaning：B2=instant_once（0=即热一次）、A=cycle_once（0=循环一次）、B3/HQJ=unknown；写 0 会触发热循环，界面不得显示为「关闭」。",
       "A 线 87 range_bit 的极性未获协议证据，range_radiator_value=1 且 range_assumed=true。",
       "A 线模式仅 CDW/FJR/UMN/WGZ/YMQ/YJW 六机型开放；模式回读 dpid=100。",
-      "B3 的 102~106/103 是洗浴预约（洗浴预约设置），不是供暖预约；本轮不生成预约供暖功能位。",
-      "HQJ 的模式 148 显示文案为 0=自动/1=睡眠/2=在家/3=外出（按 App index.html）。",
+      "B3 的 102~106/103 是洗浴预约（洗浴预约设置），不是供暖预约；不生成供暖预约功能位。",
+      "HQJ 的模式 148 显示文案为 0=自动/1=睡眠/2=在家/3=外出（写入与回读双向确认）；早期按「0 智能/1 节能」解析是 CSS 类名误读，已修订。",
+      "原生 C 的 151 官方字典为「冬季模式 0~1」，另有机型把 151 当 ECO 用；已标 assumed。",
+      "HQJ 的 153~192 是八路温控器，161 是温控器 2 故障点，不生成 B 标准的 in_window。",
+      "PGS/YJW 的 dhw_set.read=27 标 assumed（协议同时把 27 描述为晨浴掩码）；若真机确认 27 不是温度，则这两台不暴露卫浴目标温度。cmd14/cmd15 若需带温度形态，需在 points 回填 with_temp。",
       "B2 的 keep_warm.map 覆盖 0~7，minutes_to_raw 提供写入反查；JGQ 写入 ×3。",
-      "故障文案优先 index.js，其次 config.xml；键为 parse_state 归一化后的值（A 线 0→256）。"
+      "故障文案以 App 显示文案为准；键为 parse_state 归一化后的值（A 线 0→256）。",
+      "只读补充：燃烧中 103&32 覆盖 B1/B2a/B2b/B2c 21 台 + 原生 C 5 台（原生 C 的 103 来自燃烧状态绑定）；B3 119 的 2/4/8/16 只读位；A 线 68&1 仅 9 台有写入侧证据的机型（readonly，语义 assumed）；浴缸注水完成 24&8 仅 13 台；环境修正 (52&0x70)>>4 仅 A 线 16 台。",
+      "写入实现范围：cmd43 仅 9 台（YJW with_temp=false 只发末端）；cmd38 仅 A 线 7 台（FFY/WLK 的 label=睡眠）；cmd44 仅 FFY/WLK，无读点；cmd26 仅 CBC/CDW，其余 10 台待真机扩面；B3 120 可写（assumed）；118 仅 XQZ；116 洗浴预约总开关仅 XQZ、117 点动 XQZ/RTF。",
+      "circulation.options 取自 App 即热时长选择控件（无该控件时兜底 16/17）：16=30 秒、17=1 分钟，其余为分钟值；CDW/CBC/XQZ 均为 16/17/2~9/11~15（没有 10）。"
     ]
   },
   "byModelId": {
@@ -148,8 +156,8 @@
           "dpid": 109,
           "min_floor": 25,
           "max_floor": 60,
-          "min_radiator": 25,
-          "max_radiator": 60,
+          "min_radiator": 30,
+          "max_radiator": 80,
           "assumed": true
         },
         "heat_current": {
@@ -189,6 +197,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,
@@ -284,9 +296,9 @@
           "dpid": 109,
           "min_floor": 25,
           "max_floor": 60,
-          "min_radiator": 25,
-          "max_radiator": 60,
-          "assumed": true
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": false
         },
         "heat_current": {
           "dpid": 107
@@ -327,6 +339,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,
@@ -436,6 +452,8 @@
             7
           ],
           "unit_min": 30,
+          "zero_meaning": "instant_once",
+          "write_rule": "minutes_to_raw_then_scale",
           "write_scale": 1,
           "assumed": true
         },
@@ -451,7 +469,7 @@
       "form": "h5",
       "dialect": "A",
       "dvidCount": 43,
-      "flags": "111101011100001010",
+      "flags": "111101111100001010",
       "modes": [],
       "points": {
         "dialect": "A",
@@ -506,14 +524,26 @@
           "dpid": 58,
           "pump_bit": 2
         },
+        "env_offset": {
+          "dpid": 52,
+          "mask": 112,
+          "shift": 4
+        },
         "heating": {
           "dpid": 87,
           "on_bit": 128,
           "schedule_bit": 4,
           "range_bit": 32,
+          "range_shift": 5,
           "range_radiator_value": 1,
           "range_assumed": true,
-          "eco_bit": 64
+          "eco_bit": 64,
+          "eco_cmd": {
+            "type": 38,
+            "on": 16973823,
+            "off": 196607,
+            "label": "ECO/节能"
+          }
         },
         "season": {
           "cmd": {
@@ -552,6 +582,8 @@
             5,
             6
           ],
+          "zero_meaning": "cycle_once",
+          "write_rule": "minutes//unit_min",
           "assumed": true
         },
         "reset": {
@@ -587,12 +619,23 @@
           "list": 6,
           "add": 7,
           "del": 8,
+          "groups": 5,
+          "read": "list",
+          "encode": "packed_minutes",
+          "master_cmd": {
+            "type": 15,
+            "on": 16973823,
+            "off": 196607
+          },
           "next": 9
         },
         "schedule_heat": {
           "add": 271,
           "del": 272,
+          "groups": 5,
+          "encode": "packed_minutes",
           "list": 270,
+          "read": "list",
           "next": 273,
           "master_cmd": {
             "type": 40,
@@ -628,7 +671,7 @@
       "form": "h5",
       "dialect": "A",
       "dvidCount": 42,
-      "flags": "111100011100100110",
+      "flags": "111100111100100110",
       "modes": [],
       "points": {
         "dialect": "A",
@@ -680,14 +723,53 @@
           "dpid": 58,
           "pump_bit": 2
         },
+        "water_supply": {
+          "dpid": 24,
+          "bit": 8
+        },
+        "env_offset": {
+          "dpid": 52,
+          "mask": 112,
+          "shift": 4
+        },
         "heating": {
           "dpid": 87,
           "on_bit": 128,
           "schedule_bit": 4,
           "range_bit": 32,
+          "range_shift": 5,
           "range_radiator_value": 1,
           "range_assumed": true,
-          "eco_bit": 64
+          "eco_bit": 64,
+          "eco_cmd": {
+            "type": 38,
+            "on": 16973823,
+            "off": 196607,
+            "label": "ECO/节能"
+          }
+        },
+        "circulation": {
+          "cmd": {
+            "type": 26
+          },
+          "read": 78,
+          "options": {
+            "16": "30 秒",
+            "17": "1 分钟",
+            "2": "2 分钟",
+            "3": "3 分钟",
+            "4": "4 分钟",
+            "5": "5 分钟",
+            "6": "6 分钟",
+            "7": "7 分钟",
+            "8": "8 分钟",
+            "9": "9 分钟",
+            "11": "11 分钟",
+            "12": "12 分钟",
+            "13": "13 分钟",
+            "14": "14 分钟",
+            "15": "15 分钟"
+          }
         },
         "season": {
           "cmd": {
@@ -726,6 +808,8 @@
             5,
             6
           ],
+          "zero_meaning": "cycle_once",
+          "write_rule": "minutes//unit_min",
           "assumed": true
         },
         "sterilize": {
@@ -764,6 +848,14 @@
           "list": 6,
           "add": 7,
           "del": 8,
+          "groups": 5,
+          "read": "list",
+          "encode": "packed_minutes",
+          "master_cmd": {
+            "type": 15,
+            "on": 16973823,
+            "off": 196607
+          },
           "next": 9
         }
       }
@@ -775,7 +867,7 @@
       "form": "h5",
       "dialect": "A",
       "dvidCount": 43,
-      "flags": "111111011111000000",
+      "flags": "111111111111000000",
       "modes": [
         {
           "id": 0,
@@ -847,14 +939,61 @@
           "dpid": 58,
           "pump_bit": 2
         },
+        "water_supply": {
+          "dpid": 24,
+          "bit": 8
+        },
+        "env_offset": {
+          "dpid": 52,
+          "mask": 112,
+          "shift": 4
+        },
+        "jog": {
+          "dpid": 68,
+          "bit": 1,
+          "assumed": true,
+          "readonly": true
+        },
         "heating": {
           "dpid": 87,
           "on_bit": 128,
           "schedule_bit": 4,
           "range_bit": 32,
+          "range_shift": 5,
           "range_radiator_value": 1,
           "range_assumed": true,
-          "eco_bit": 64
+          "eco_bit": 64,
+          "emitter_cmd": {
+            "type": 43,
+            "with_temp": true,
+            "values": {
+              "0": "地暖",
+              "1": "散热片"
+            }
+          }
+        },
+        "circulation": {
+          "cmd": {
+            "type": 26
+          },
+          "read": 78,
+          "options": {
+            "16": "30 秒",
+            "17": "1 分钟",
+            "2": "2 分钟",
+            "3": "3 分钟",
+            "4": "4 分钟",
+            "5": "5 分钟",
+            "6": "6 分钟",
+            "7": "7 分钟",
+            "8": "8 分钟",
+            "9": "9 分钟",
+            "11": "11 分钟",
+            "12": "12 分钟",
+            "13": "13 分钟",
+            "14": "14 分钟",
+            "15": "15 分钟"
+          }
         },
         "season": {
           "cmd": {
@@ -893,6 +1032,8 @@
             5,
             6
           ],
+          "zero_meaning": "cycle_once",
+          "write_rule": "minutes//unit_min",
           "assumed": true
         },
         "boost": {
@@ -952,12 +1093,23 @@
           "list": 6,
           "add": 7,
           "del": 8,
+          "groups": 5,
+          "read": "list",
+          "encode": "packed_minutes",
+          "master_cmd": {
+            "type": 15,
+            "on": 16973823,
+            "off": 196607
+          },
           "next": 9
         },
         "schedule_heat": {
           "add": 271,
           "del": 272,
+          "groups": 5,
+          "encode": "packed_minutes",
           "list": 270,
+          "read": "list",
           "master_cmd": {
             "type": 40,
             "on": 16973823,
@@ -1014,9 +1166,9 @@
           "dpid": 109,
           "min_floor": 25,
           "max_floor": 60,
-          "min_radiator": 25,
-          "max_radiator": 60,
-          "assumed": true
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": false
         },
         "heat_current": {
           "dpid": 107
@@ -1057,6 +1209,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,
@@ -1166,6 +1322,8 @@
             7
           ],
           "unit_min": 30,
+          "zero_meaning": "instant_once",
+          "write_rule": "minutes_to_raw_then_scale",
           "write_scale": 1,
           "assumed": true
         },
@@ -1232,7 +1390,8 @@
           "values": {
             "0": "标准",
             "1": "ECO"
-          }
+          },
+          "assumed": true
         },
         "fault": {
           "dpid": 117,
@@ -1250,6 +1409,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,
@@ -1337,11 +1500,11 @@
         },
         "heat_set": {
           "dpid": 109,
-          "min_floor": 36,
+          "min_floor": 25,
           "max_floor": 60,
-          "min_radiator": 36,
-          "max_radiator": 60,
-          "assumed": true
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": false
         },
         "heat_current": {
           "dpid": 107
@@ -1380,6 +1543,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,
@@ -1461,11 +1628,11 @@
         },
         "heat_set": {
           "dpid": 109,
-          "min_floor": 36,
+          "min_floor": 25,
           "max_floor": 60,
-          "min_radiator": 36,
-          "max_radiator": 60,
-          "assumed": true
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": false
         },
         "heat_current": {
           "dpid": 107
@@ -1504,6 +1671,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,
@@ -1619,7 +1790,7 @@
       "form": "h5",
       "dialect": "A",
       "dvidCount": 46,
-      "flags": "111101011100100110",
+      "flags": "111101111100100110",
       "modes": [],
       "points": {
         "dialect": "A",
@@ -1674,14 +1845,41 @@
           "dpid": 58,
           "pump_bit": 2
         },
+        "water_supply": {
+          "dpid": 24,
+          "bit": 8
+        },
+        "env_offset": {
+          "dpid": 52,
+          "mask": 112,
+          "shift": 4
+        },
+        "jog": {
+          "dpid": 68,
+          "bit": 1,
+          "assumed": true,
+          "readonly": true
+        },
         "heating": {
           "dpid": 87,
           "on_bit": 128,
           "schedule_bit": 4,
           "range_bit": 32,
+          "range_shift": 5,
           "range_radiator_value": 1,
           "range_assumed": true,
-          "eco_bit": 64
+          "eco_bit": 64,
+          "eco_cmd": {
+            "type": 38,
+            "on": 16973823,
+            "off": 196607,
+            "label": "睡眠"
+          }
+        },
+        "away_cmd": {
+          "type": 44,
+          "on": 16973823,
+          "off": 196607
         },
         "season": {
           "cmd": {
@@ -1720,6 +1918,8 @@
             5,
             6
           ],
+          "zero_meaning": "cycle_once",
+          "write_rule": "minutes//unit_min",
           "assumed": true
         },
         "sterilize": {
@@ -1758,12 +1958,23 @@
           "list": 6,
           "add": 7,
           "del": 8,
+          "groups": 5,
+          "read": "list",
+          "encode": "packed_minutes",
+          "master_cmd": {
+            "type": 15,
+            "on": 16973823,
+            "off": 196607
+          },
           "next": 9
         },
         "schedule_heat": {
           "add": 271,
           "del": 272,
+          "groups": 5,
+          "encode": "packed_minutes",
           "list": 270,
+          "read": "list",
           "master_cmd": {
             "type": 40,
             "on": 16973823,
@@ -1851,14 +2062,38 @@
           "dpid": 58,
           "pump_bit": 2
         },
+        "water_supply": {
+          "dpid": 24,
+          "bit": 8
+        },
+        "env_offset": {
+          "dpid": 52,
+          "mask": 112,
+          "shift": 4
+        },
+        "jog": {
+          "dpid": 68,
+          "bit": 1,
+          "assumed": true,
+          "readonly": true
+        },
         "heating": {
           "dpid": 87,
           "on_bit": 128,
           "schedule_bit": 4,
           "range_bit": 32,
+          "range_shift": 5,
           "range_radiator_value": 1,
           "range_assumed": true,
-          "eco_bit": 64
+          "eco_bit": 64,
+          "emitter_cmd": {
+            "type": 43,
+            "with_temp": true,
+            "values": {
+              "0": "地暖",
+              "1": "散热片"
+            }
+          }
         },
         "season": {
           "cmd": {
@@ -1966,9 +2201,9 @@
           "dpid": 109,
           "min_floor": 25,
           "max_floor": 60,
-          "min_radiator": 25,
-          "max_radiator": 60,
-          "assumed": true
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": false
         },
         "heat_current": {
           "dpid": 107
@@ -2009,6 +2244,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,
@@ -2118,6 +2357,8 @@
             7
           ],
           "unit_min": 30,
+          "zero_meaning": "instant_once",
+          "write_rule": "minutes_to_raw_then_scale",
           "write_scale": 1,
           "assumed": true
         }
@@ -2171,9 +2412,9 @@
           "dpid": 109,
           "min_floor": 25,
           "max_floor": 60,
-          "min_radiator": 25,
-          "max_radiator": 60,
-          "assumed": true
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": false
         },
         "heat_current": {
           "dpid": 107
@@ -2214,6 +2455,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,
@@ -2323,6 +2568,8 @@
             7
           ],
           "unit_min": 30,
+          "zero_meaning": "instant_once",
+          "write_rule": "minutes_to_raw_then_scale",
           "write_scale": 1,
           "assumed": true
         }
@@ -2417,6 +2664,8 @@
         },
         "keep_warm": {
           "dpid": 146,
+          "zero_meaning": "unknown",
+          "write_rule": "minutes//unit_min",
           "unit_min": 10,
           "levels": [
             0,
@@ -2440,6 +2689,7 @@
         "diff_heat": {
           "dpid": 112,
           "write_offset": 5,
+          "write_offset_alt": 15,
           "assumed": true
         },
         "thermostats": [
@@ -2562,10 +2812,6 @@
             142,
             143
           ]
-        },
-        "in_window": {
-          "dpid": 161,
-          "value": 1
         }
       }
     },
@@ -2603,10 +2849,10 @@
         },
         "heat_set": {
           "dpid": 109,
-          "min_floor": 36,
+          "min_floor": 25,
           "max_floor": 60,
-          "min_radiator": 36,
-          "max_radiator": 60,
+          "min_radiator": 30,
+          "max_radiator": 80,
           "assumed": true
         },
         "heat_current": {
@@ -2645,6 +2891,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,
@@ -2750,7 +3000,8 @@
           "values": {
             "0": "标准",
             "1": "ECO"
-          }
+          },
+          "assumed": true
         },
         "fault": {
           "dpid": 117,
@@ -2768,6 +3019,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,
@@ -2865,9 +3120,9 @@
           "dpid": 109,
           "min_floor": 25,
           "max_floor": 60,
-          "min_radiator": 25,
-          "max_radiator": 60,
-          "assumed": true
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": false
         },
         "heat_current": {
           "dpid": 107
@@ -2908,6 +3163,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,
@@ -3017,6 +3276,8 @@
             7
           ],
           "unit_min": 30,
+          "zero_meaning": "instant_once",
+          "write_rule": "minutes_to_raw_then_scale",
           "write_scale": 3,
           "assumed": true
         },
@@ -3073,9 +3334,9 @@
           "dpid": 109,
           "min_floor": 25,
           "max_floor": 60,
-          "min_radiator": 25,
-          "max_radiator": 60,
-          "assumed": true
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": false
         },
         "heat_current": {
           "dpid": 107
@@ -3116,6 +3377,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "diff_temp": {
           "dpid": 110,
@@ -3244,7 +3509,8 @@
           "values": {
             "0": "标准",
             "1": "ECO"
-          }
+          },
+          "assumed": true
         },
         "fault": {
           "dpid": 117,
@@ -3262,6 +3528,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,
@@ -3369,7 +3639,8 @@
           "values": {
             "0": "标准",
             "1": "ECO"
-          }
+          },
+          "assumed": true
         },
         "fault": {
           "dpid": 117,
@@ -3387,6 +3658,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,
@@ -3470,10 +3745,10 @@
         },
         "heat_set": {
           "dpid": 109,
-          "min_floor": 36,
+          "min_floor": 25,
           "max_floor": 60,
-          "min_radiator": 36,
-          "max_radiator": 60,
+          "min_radiator": 30,
+          "max_radiator": 80,
           "assumed": true
         },
         "heat_current": {
@@ -3512,6 +3787,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,
@@ -3566,7 +3845,7 @@
       "form": "h5",
       "dialect": "A",
       "dvidCount": 43,
-      "flags": "111101011100001010",
+      "flags": "111101111100001010",
       "modes": [],
       "points": {
         "dialect": "A",
@@ -3621,14 +3900,26 @@
           "dpid": 58,
           "pump_bit": 2
         },
+        "env_offset": {
+          "dpid": 52,
+          "mask": 112,
+          "shift": 4
+        },
         "heating": {
           "dpid": 87,
           "on_bit": 128,
           "schedule_bit": 4,
           "range_bit": 32,
+          "range_shift": 5,
           "range_radiator_value": 1,
           "range_assumed": true,
-          "eco_bit": 64
+          "eco_bit": 64,
+          "eco_cmd": {
+            "type": 38,
+            "on": 16973823,
+            "off": 196607,
+            "label": "ECO/节能"
+          }
         },
         "season": {
           "cmd": {
@@ -3667,6 +3958,8 @@
             5,
             6
           ],
+          "zero_meaning": "cycle_once",
+          "write_rule": "minutes//unit_min",
           "assumed": true
         },
         "reset": {
@@ -3702,12 +3995,23 @@
           "list": 6,
           "add": 7,
           "del": 8,
+          "groups": 5,
+          "read": "list",
+          "encode": "packed_minutes",
+          "master_cmd": {
+            "type": 15,
+            "on": 16973823,
+            "off": 196607
+          },
           "next": 9
         },
         "schedule_heat": {
           "add": 271,
           "del": 272,
+          "groups": 5,
+          "encode": "packed_minutes",
           "list": 270,
+          "read": "list",
           "next": 273,
           "master_cmd": {
             "type": 40,
@@ -3784,9 +4088,9 @@
           "dpid": 109,
           "min_floor": 25,
           "max_floor": 60,
-          "min_radiator": 25,
-          "max_radiator": 60,
-          "assumed": true
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": false
         },
         "heat_current": {
           "dpid": 107
@@ -3827,6 +4131,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "diff_temp": {
           "dpid": 110,
@@ -3945,9 +4253,9 @@
           "dpid": 109,
           "min_floor": 25,
           "max_floor": 60,
-          "min_radiator": 25,
-          "max_radiator": 60,
-          "assumed": true
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": false
         },
         "heat_current": {
           "dpid": 107
@@ -3988,6 +4296,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,
@@ -4097,6 +4409,8 @@
             7
           ],
           "unit_min": 30,
+          "zero_meaning": "instant_once",
+          "write_rule": "minutes_to_raw_then_scale",
           "write_scale": 1,
           "assumed": true
         }
@@ -4142,9 +4456,9 @@
           "dpid": 109,
           "min_floor": 25,
           "max_floor": 60,
-          "min_radiator": 25,
-          "max_radiator": 60,
-          "assumed": true
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": false
         },
         "heat_current": {
           "dpid": 107
@@ -4183,6 +4497,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,
@@ -4292,6 +4610,8 @@
             7
           ],
           "unit_min": 30,
+          "zero_meaning": "instant_once",
+          "write_rule": "minutes_to_raw_then_scale",
           "write_scale": 1,
           "assumed": true
         },
@@ -4324,7 +4644,8 @@
           },
           "mode_dpid": 23,
           "flow_dpid": 28,
-          "volume_dpid": 29
+          "volume_dpid": 29,
+          "assumed": true
         },
         "dhw_current": {
           "dpid": 18
@@ -4359,14 +4680,36 @@
           "dpid": 58,
           "pump_bit": 2
         },
+        "water_supply": {
+          "dpid": 24,
+          "bit": 8
+        },
+        "env_offset": {
+          "dpid": 52,
+          "mask": 112,
+          "shift": 4
+        },
+        "jog": {
+          "dpid": 68,
+          "bit": 1,
+          "assumed": true,
+          "readonly": true
+        },
         "heating": {
           "dpid": 87,
           "on_bit": 128,
           "schedule_bit": 4,
           "range_bit": 32,
+          "range_shift": 5,
           "range_radiator_value": 1,
           "range_assumed": true,
-          "eco_bit": 64
+          "eco_bit": 64,
+          "eco_cmd": {
+            "type": 38,
+            "on": 16973823,
+            "off": 196607,
+            "label": "ECO/节能"
+          }
         },
         "season": {
           "cmd": {
@@ -4405,6 +4748,8 @@
             5,
             6
           ],
+          "zero_meaning": "cycle_once",
+          "write_rule": "minutes//unit_min",
           "assumed": true
         },
         "sterilize": {
@@ -4493,8 +4838,8 @@
         },
         "heat_set": {
           "dpid": 109,
-          "min_floor": 30,
-          "max_floor": 80,
+          "min_floor": 25,
+          "max_floor": 60,
           "min_radiator": 30,
           "max_radiator": 80,
           "assumed": true
@@ -4535,6 +4880,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,
@@ -4589,7 +4938,7 @@
       "form": "h5",
       "dialect": "A",
       "dvidCount": 40,
-      "flags": "111101010101000000",
+      "flags": "111101110101000000",
       "modes": [],
       "points": {
         "dialect": "A",
@@ -4641,14 +4990,32 @@
           "dpid": 58,
           "pump_bit": 2
         },
+        "water_supply": {
+          "dpid": 24,
+          "bit": 8
+        },
+        "env_offset": {
+          "dpid": 52,
+          "mask": 112,
+          "shift": 4
+        },
         "heating": {
           "dpid": 87,
           "on_bit": 128,
           "schedule_bit": 4,
           "range_bit": 32,
+          "range_shift": 5,
           "range_radiator_value": 1,
           "range_assumed": true,
-          "eco_bit": 64
+          "eco_bit": 64,
+          "emitter_cmd": {
+            "type": 43,
+            "with_temp": true,
+            "values": {
+              "0": "地暖",
+              "1": "散热片"
+            }
+          }
         },
         "season": {
           "cmd": {
@@ -4695,12 +5062,18 @@
           "list": 6,
           "add": 7,
           "del": 8,
+          "groups": 5,
+          "read": "list",
+          "encode": "packed_minutes",
           "next": 9
         },
         "schedule_heat": {
           "add": 271,
           "del": 272,
+          "groups": 5,
+          "encode": "packed_minutes",
           "list": 270,
+          "read": "list",
           "master_cmd": {
             "type": 40,
             "on": 16973823,
@@ -4743,10 +5116,10 @@
         },
         "heat_set": {
           "dpid": 109,
-          "min_floor": 36,
+          "min_floor": 25,
           "max_floor": 60,
-          "min_radiator": 36,
-          "max_radiator": 60,
+          "min_radiator": 30,
+          "max_radiator": 80,
           "assumed": true
         },
         "heat_current": {
@@ -4785,6 +5158,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,
@@ -4839,7 +5216,7 @@
       "form": "h5",
       "dialect": "A",
       "dvidCount": 40,
-      "flags": "111101010101000000",
+      "flags": "111101110101000000",
       "modes": [],
       "points": {
         "dialect": "A",
@@ -4891,14 +5268,32 @@
           "dpid": 58,
           "pump_bit": 2
         },
+        "water_supply": {
+          "dpid": 24,
+          "bit": 8
+        },
+        "env_offset": {
+          "dpid": 52,
+          "mask": 112,
+          "shift": 4
+        },
         "heating": {
           "dpid": 87,
           "on_bit": 128,
           "schedule_bit": 4,
           "range_bit": 32,
+          "range_shift": 5,
           "range_radiator_value": 1,
           "range_assumed": true,
-          "eco_bit": 64
+          "eco_bit": 64,
+          "emitter_cmd": {
+            "type": 43,
+            "with_temp": true,
+            "values": {
+              "0": "地暖",
+              "1": "散热片"
+            }
+          }
         },
         "season": {
           "cmd": {
@@ -4945,12 +5340,18 @@
           "list": 6,
           "add": 7,
           "del": 8,
+          "groups": 5,
+          "read": "list",
+          "encode": "packed_minutes",
           "next": 9
         },
         "schedule_heat": {
           "add": 271,
           "del": 272,
+          "groups": 5,
+          "encode": "packed_minutes",
           "list": 270,
+          "read": "list",
           "master_cmd": {
             "type": 40,
             "on": 16973823,
@@ -5010,11 +5411,21 @@
         "emitter": {
           "dpid": 120,
           "radiator": 1,
-          "floor": 0
+          "floor": 0,
+          "writable": true,
+          "assumed": true
         },
         "heating": {
           "dpid": 119,
-          "on": 1
+          "on": 1,
+          "frost_bit": 2,
+          "reserve_bit": 4,
+          "big_loop_bit": 8,
+          "pump_bit": 16
+        },
+        "jog": {
+          "dpid": 117,
+          "writable": true
         },
         "mode": {
           "dpid": 122,
@@ -5038,6 +5449,8 @@
         },
         "keep_warm": {
           "dpid": 113,
+          "zero_meaning": "unknown",
+          "write_rule": "minutes//unit_min",
           "unit_min": 10,
           "levels": [
             0,
@@ -5125,9 +5538,9 @@
           "dpid": 109,
           "min_floor": 25,
           "max_floor": 60,
-          "min_radiator": 25,
-          "max_radiator": 60,
-          "assumed": true
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": false
         },
         "heat_current": {
           "dpid": 107
@@ -5168,6 +5581,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,
@@ -5277,6 +5694,8 @@
             7
           ],
           "unit_min": 30,
+          "zero_meaning": "instant_once",
+          "write_rule": "minutes_to_raw_then_scale",
           "write_scale": 1,
           "assumed": true
         }
@@ -5330,9 +5749,9 @@
           "dpid": 109,
           "min_floor": 25,
           "max_floor": 60,
-          "min_radiator": 25,
-          "max_radiator": 60,
-          "assumed": true
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": false
         },
         "heat_current": {
           "dpid": 107
@@ -5373,6 +5792,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,
@@ -5482,6 +5905,8 @@
             7
           ],
           "unit_min": 30,
+          "zero_meaning": "instant_once",
+          "write_rule": "minutes_to_raw_then_scale",
           "write_scale": 1,
           "assumed": true
         }
@@ -5494,7 +5919,7 @@
       "form": "h5",
       "dialect": "A",
       "dvidCount": 41,
-      "flags": "111110011111000000",
+      "flags": "111111111111000000",
       "modes": [
         {
           "id": 0,
@@ -5566,14 +5991,38 @@
           "dpid": 58,
           "pump_bit": 2
         },
+        "water_supply": {
+          "dpid": 24,
+          "bit": 8
+        },
+        "env_offset": {
+          "dpid": 52,
+          "mask": 112,
+          "shift": 4
+        },
+        "jog": {
+          "dpid": 68,
+          "bit": 1,
+          "assumed": true,
+          "readonly": true
+        },
         "heating": {
           "dpid": 87,
           "on_bit": 128,
           "schedule_bit": 4,
           "range_bit": 32,
+          "range_shift": 5,
           "range_radiator_value": 1,
           "range_assumed": true,
-          "eco_bit": 64
+          "eco_bit": 64,
+          "emitter_cmd": {
+            "type": 43,
+            "with_temp": true,
+            "values": {
+              "0": "地暖",
+              "1": "散热片"
+            }
+          }
         },
         "season": {
           "cmd": {
@@ -5612,6 +6061,8 @@
             5,
             6
           ],
+          "zero_meaning": "cycle_once",
+          "write_rule": "minutes//unit_min",
           "assumed": true
         },
         "boost": {
@@ -5671,11 +6122,21 @@
           "list": 6,
           "add": 7,
           "del": 8,
+          "groups": 5,
+          "read": "list",
+          "encode": "packed_minutes",
+          "master_cmd": {
+            "type": 15,
+            "on": 16973823,
+            "off": 196607
+          },
           "next": 9
         },
         "schedule_heat": {
           "add": 271,
-          "del": 272
+          "del": 272,
+          "groups": 5,
+          "encode": "packed_minutes"
         }
       }
     },
@@ -5727,9 +6188,9 @@
           "dpid": 109,
           "min_floor": 25,
           "max_floor": 60,
-          "min_radiator": 25,
-          "max_radiator": 60,
-          "assumed": true
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": false
         },
         "heat_current": {
           "dpid": 107
@@ -5770,6 +6231,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "diff_temp": {
           "dpid": 110,
@@ -5875,10 +6340,10 @@
         },
         "heat_set": {
           "dpid": 109,
-          "min_floor": 36,
+          "min_floor": 25,
           "max_floor": 60,
-          "min_radiator": 36,
-          "max_radiator": 60,
+          "min_radiator": 30,
+          "max_radiator": 80,
           "assumed": true
         },
         "heat_current": {
@@ -5917,6 +6382,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,
@@ -6012,9 +6481,9 @@
           "dpid": 109,
           "min_floor": 25,
           "max_floor": 60,
-          "min_radiator": 25,
-          "max_radiator": 60,
-          "assumed": true
+          "min_radiator": 30,
+          "max_radiator": 80,
+          "assumed": false
         },
         "heat_current": {
           "dpid": 107
@@ -6055,6 +6524,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,
@@ -6164,6 +6637,8 @@
             7
           ],
           "unit_min": 30,
+          "zero_meaning": "instant_once",
+          "write_rule": "minutes_to_raw_then_scale",
           "write_scale": 1,
           "assumed": true
         }
@@ -6176,7 +6651,7 @@
       "form": "h5",
       "dialect": "A",
       "dvidCount": 43,
-      "flags": "111111011111000000",
+      "flags": "111111111111000000",
       "modes": [
         {
           "id": 0,
@@ -6248,14 +6723,38 @@
           "dpid": 58,
           "pump_bit": 2
         },
+        "water_supply": {
+          "dpid": 24,
+          "bit": 8
+        },
+        "env_offset": {
+          "dpid": 52,
+          "mask": 112,
+          "shift": 4
+        },
+        "jog": {
+          "dpid": 68,
+          "bit": 1,
+          "assumed": true,
+          "readonly": true
+        },
         "heating": {
           "dpid": 87,
           "on_bit": 128,
           "schedule_bit": 4,
           "range_bit": 32,
+          "range_shift": 5,
           "range_radiator_value": 1,
           "range_assumed": true,
-          "eco_bit": 64
+          "eco_bit": 64,
+          "emitter_cmd": {
+            "type": 43,
+            "with_temp": true,
+            "values": {
+              "0": "地暖",
+              "1": "散热片"
+            }
+          }
         },
         "season": {
           "cmd": {
@@ -6294,6 +6793,8 @@
             5,
             6
           ],
+          "zero_meaning": "cycle_once",
+          "write_rule": "minutes//unit_min",
           "assumed": true
         },
         "boost": {
@@ -6353,12 +6854,23 @@
           "list": 6,
           "add": 7,
           "del": 8,
+          "groups": 5,
+          "read": "list",
+          "encode": "packed_minutes",
+          "master_cmd": {
+            "type": 15,
+            "on": 16973823,
+            "off": 196607
+          },
           "next": 9
         },
         "schedule_heat": {
           "add": 271,
           "del": 272,
+          "groups": 5,
+          "encode": "packed_minutes",
           "list": 270,
+          "read": "list",
           "master_cmd": {
             "type": 40,
             "on": 16973823,
@@ -6374,7 +6886,7 @@
       "form": "h5",
       "dialect": "A",
       "dvidCount": 46,
-      "flags": "111101011100100110",
+      "flags": "111101111100100110",
       "modes": [],
       "points": {
         "dialect": "A",
@@ -6429,14 +6941,41 @@
           "dpid": 58,
           "pump_bit": 2
         },
+        "water_supply": {
+          "dpid": 24,
+          "bit": 8
+        },
+        "env_offset": {
+          "dpid": 52,
+          "mask": 112,
+          "shift": 4
+        },
+        "jog": {
+          "dpid": 68,
+          "bit": 1,
+          "assumed": true,
+          "readonly": true
+        },
         "heating": {
           "dpid": 87,
           "on_bit": 128,
           "schedule_bit": 4,
           "range_bit": 32,
+          "range_shift": 5,
           "range_radiator_value": 1,
           "range_assumed": true,
-          "eco_bit": 64
+          "eco_bit": 64,
+          "eco_cmd": {
+            "type": 38,
+            "on": 16973823,
+            "off": 196607,
+            "label": "睡眠"
+          }
+        },
+        "away_cmd": {
+          "type": 44,
+          "on": 16973823,
+          "off": 196607
         },
         "season": {
           "cmd": {
@@ -6475,6 +7014,8 @@
             5,
             6
           ],
+          "zero_meaning": "cycle_once",
+          "write_rule": "minutes//unit_min",
           "assumed": true
         },
         "sterilize": {
@@ -6513,12 +7054,23 @@
           "list": 6,
           "add": 7,
           "del": 8,
+          "groups": 5,
+          "read": "list",
+          "encode": "packed_minutes",
+          "master_cmd": {
+            "type": 15,
+            "on": 16973823,
+            "off": 196607
+          },
           "next": 9
         },
         "schedule_heat": {
           "add": 271,
           "del": 272,
+          "groups": 5,
+          "encode": "packed_minutes",
           "list": 270,
+          "read": "list",
           "master_cmd": {
             "type": 40,
             "on": 16973823,
@@ -6578,11 +7130,41 @@
         "emitter": {
           "dpid": 120,
           "radiator": 1,
-          "floor": 0
+          "floor": 0,
+          "writable": true,
+          "assumed": true
         },
         "heating": {
           "dpid": 119,
-          "on": 1
+          "on": 1,
+          "frost_bit": 2,
+          "reserve_bit": 4,
+          "big_loop_bit": 8,
+          "pump_bit": 16
+        },
+        "circulation": {
+          "dpid": 118,
+          "options": {
+            "16": "30 秒",
+            "17": "1 分钟",
+            "2": "2 分钟",
+            "3": "3 分钟",
+            "4": "4 分钟",
+            "5": "5 分钟",
+            "6": "6 分钟",
+            "7": "7 分钟",
+            "8": "8 分钟",
+            "9": "9 分钟",
+            "11": "11 分钟",
+            "12": "12 分钟",
+            "13": "13 分钟",
+            "14": "14 分钟",
+            "15": "15 分钟"
+          }
+        },
+        "jog": {
+          "dpid": 117,
+          "writable": true
         },
         "mode": {
           "dpid": 122,
@@ -6606,6 +7188,8 @@
         },
         "keep_warm": {
           "dpid": 113,
+          "zero_meaning": "unknown",
+          "write_rule": "minutes//unit_min",
           "unit_min": 10,
           "levels": [
             0,
@@ -6644,7 +7228,11 @@
             106
           ],
           "encode": "hhmm",
-          "temp": null
+          "temp": null,
+          "master": {
+            "dpid": 116,
+            "assumed": true
+          }
         }
       }
     },
@@ -6655,7 +7243,7 @@
       "form": "h5",
       "dialect": "A",
       "dvidCount": 40,
-      "flags": "111101010101000000",
+      "flags": "111101110101000000",
       "modes": [],
       "points": {
         "dialect": "A",
@@ -6707,14 +7295,32 @@
           "dpid": 58,
           "pump_bit": 2
         },
+        "water_supply": {
+          "dpid": 24,
+          "bit": 8
+        },
+        "env_offset": {
+          "dpid": 52,
+          "mask": 112,
+          "shift": 4
+        },
         "heating": {
           "dpid": 87,
           "on_bit": 128,
           "schedule_bit": 4,
           "range_bit": 32,
+          "range_shift": 5,
           "range_radiator_value": 1,
           "range_assumed": true,
-          "eco_bit": 64
+          "eco_bit": 64,
+          "emitter_cmd": {
+            "type": 43,
+            "with_temp": true,
+            "values": {
+              "0": "地暖",
+              "1": "散热片"
+            }
+          }
         },
         "season": {
           "cmd": {
@@ -6761,12 +7367,18 @@
           "list": 6,
           "add": 7,
           "del": 8,
+          "groups": 5,
+          "read": "list",
+          "encode": "packed_minutes",
           "next": 9
         },
         "schedule_heat": {
           "add": 271,
           "del": 272,
+          "groups": 5,
+          "encode": "packed_minutes",
           "list": 270,
+          "read": "list",
           "master_cmd": {
             "type": 40,
             "on": 16973823,
@@ -6782,7 +7394,7 @@
       "form": "h5",
       "dialect": "A",
       "dvidCount": 44,
-      "flags": "111110011100110110",
+      "flags": "111110111100110110",
       "modes": [
         {
           "id": 0,
@@ -6816,7 +7428,8 @@
           },
           "mode_dpid": 23,
           "flow_dpid": 28,
-          "volume_dpid": 29
+          "volume_dpid": 29,
+          "assumed": true
         },
         "dhw_current": {
           "dpid": 18
@@ -6851,14 +7464,38 @@
           "dpid": 58,
           "pump_bit": 2
         },
+        "water_supply": {
+          "dpid": 24,
+          "bit": 8
+        },
+        "env_offset": {
+          "dpid": 52,
+          "mask": 112,
+          "shift": 4
+        },
+        "jog": {
+          "dpid": 68,
+          "bit": 1,
+          "assumed": true,
+          "readonly": true
+        },
         "heating": {
           "dpid": 87,
           "on_bit": 128,
           "schedule_bit": 4,
           "range_bit": 32,
+          "range_shift": 5,
           "range_radiator_value": 1,
           "range_assumed": true,
-          "eco_bit": 64
+          "eco_bit": 64,
+          "emitter_cmd": {
+            "type": 43,
+            "with_temp": false,
+            "values": {
+              "0": "地暖",
+              "1": "散热片"
+            }
+          }
         },
         "season": {
           "cmd": {
@@ -6897,6 +7534,8 @@
             5,
             6
           ],
+          "zero_meaning": "cycle_once",
+          "write_rule": "minutes//unit_min",
           "assumed": true
         },
         "mode": {
@@ -6964,6 +7603,14 @@
           "list": 6,
           "add": 7,
           "del": 8,
+          "groups": 5,
+          "read": "list",
+          "encode": "packed_minutes",
+          "master_cmd": {
+            "type": 15,
+            "on": 16973823,
+            "off": 196607
+          },
           "next": 9
         },
         "morning_night": {
@@ -6996,7 +7643,7 @@
       "form": "h5",
       "dialect": "A",
       "dvidCount": 43,
-      "flags": "111111011111000000",
+      "flags": "111111111111000000",
       "modes": [
         {
           "id": 0,
@@ -7068,14 +7715,38 @@
           "dpid": 58,
           "pump_bit": 2
         },
+        "water_supply": {
+          "dpid": 24,
+          "bit": 8
+        },
+        "env_offset": {
+          "dpid": 52,
+          "mask": 112,
+          "shift": 4
+        },
+        "jog": {
+          "dpid": 68,
+          "bit": 1,
+          "assumed": true,
+          "readonly": true
+        },
         "heating": {
           "dpid": 87,
           "on_bit": 128,
           "schedule_bit": 4,
           "range_bit": 32,
+          "range_shift": 5,
           "range_radiator_value": 1,
           "range_assumed": true,
-          "eco_bit": 64
+          "eco_bit": 64,
+          "emitter_cmd": {
+            "type": 43,
+            "with_temp": true,
+            "values": {
+              "0": "地暖",
+              "1": "散热片"
+            }
+          }
         },
         "season": {
           "cmd": {
@@ -7114,6 +7785,8 @@
             5,
             6
           ],
+          "zero_meaning": "cycle_once",
+          "write_rule": "minutes//unit_min",
           "assumed": true
         },
         "boost": {
@@ -7173,12 +7846,23 @@
           "list": 6,
           "add": 7,
           "del": 8,
+          "groups": 5,
+          "read": "list",
+          "encode": "packed_minutes",
+          "master_cmd": {
+            "type": 15,
+            "on": 16973823,
+            "off": 196607
+          },
           "next": 9
         },
         "schedule_heat": {
           "add": 271,
           "del": 272,
+          "groups": 5,
+          "encode": "packed_minutes",
           "list": 270,
+          "read": "list",
           "master_cmd": {
             "type": 40,
             "on": 16973823,
@@ -7194,7 +7878,7 @@
       "form": "h5",
       "dialect": "A",
       "dvidCount": 43,
-      "flags": "111101011100001010",
+      "flags": "111101111100001010",
       "modes": [],
       "points": {
         "dialect": "A",
@@ -7249,14 +7933,26 @@
           "dpid": 58,
           "pump_bit": 2
         },
+        "env_offset": {
+          "dpid": 52,
+          "mask": 112,
+          "shift": 4
+        },
         "heating": {
           "dpid": 87,
           "on_bit": 128,
           "schedule_bit": 4,
           "range_bit": 32,
+          "range_shift": 5,
           "range_radiator_value": 1,
           "range_assumed": true,
-          "eco_bit": 64
+          "eco_bit": 64,
+          "eco_cmd": {
+            "type": 38,
+            "on": 16973823,
+            "off": 196607,
+            "label": "ECO/节能"
+          }
         },
         "season": {
           "cmd": {
@@ -7295,6 +7991,8 @@
             5,
             6
           ],
+          "zero_meaning": "cycle_once",
+          "write_rule": "minutes//unit_min",
           "assumed": true
         },
         "reset": {
@@ -7330,12 +8028,23 @@
           "list": 6,
           "add": 7,
           "del": 8,
+          "groups": 5,
+          "read": "list",
+          "encode": "packed_minutes",
+          "master_cmd": {
+            "type": 15,
+            "on": 16973823,
+            "off": 196607
+          },
           "next": 9
         },
         "schedule_heat": {
           "add": 271,
           "del": 272,
+          "groups": 5,
+          "encode": "packed_minutes",
           "list": 270,
+          "read": "list",
           "next": 273,
           "master_cmd": {
             "type": 40,
@@ -7422,7 +8131,8 @@
           "values": {
             "0": "标准",
             "1": "ECO"
-          }
+          },
+          "assumed": true
         },
         "fault": {
           "dpid": 117,
@@ -7440,6 +8150,10 @@
           "dpid": 113,
           "fan_bit": 64,
           "pump_bit": 128
+        },
+        "combustion": {
+          "dpid": 103,
+          "bit": 32
         },
         "gas_total": {
           "dpid": 114,

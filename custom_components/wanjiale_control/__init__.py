@@ -43,7 +43,7 @@ def platforms_for_entry() -> tuple:
     """本次要转发的实体平台 = 各品类声明的平台 ∪ 核心最小平台。
 
     必须在转发前算好：HA 要求平台清单在加载时确定，卸载要用同一份清单。
-    新增品类只需在自己插件里声明 `platforms`，这里自动求并集 —— 核心无需改动。
+    新增品类只需在自己插件里声明 `platforms`，这里自动求并集，核心无需改动。
     """
     ensure_plugins()
     return tuple(sorted(set(CORE_PLATFORMS) | set(registry.all_platforms())))

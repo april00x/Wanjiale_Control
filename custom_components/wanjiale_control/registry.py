@@ -73,12 +73,21 @@ class CategoryPlugin:
     留空表示「始终使用 base_points」。该语义必须由插件声明，核心层不得写死家族名。
     """
 
+    baseline_from_model_points: bool = False
+    """是否把机型点位表（`devices[*].points`）中的 dpid 并入基线点位。
+
+    002 等品类没有全局 `base_points`，点位全部随能力表下发；置 True 后
+    `capabilities.effective_points()` 会递归收集机型点位里的 dpid/数组，
+    使水温、用气量、下次预约等只读实体在设备首刷前即可创建（读值为 unknown）。
+    默认 False → 001/008 行为不变。
+    """
+
     specs: Mapping[str, Any] = field(default_factory=dict)
     """平台到 spec 表的映射。spec 表放品类目录，平台模块只做通用渲染，
     因此新增品类无需改动任何平台模块。
 
-    值可为**静态序列**（如 001：`{"switch": (SwitchSpec(...), ...)}`），
-    也可为**按设备生成的函数** `Callable[[device], Sequence[Spec]]`
+    值可为静态序列（如 001：`{"switch": (SwitchSpec(...), ...)}`），
+    也可为按设备生成的函数 `Callable[[device], Sequence[Spec]]`
     （如 008：实体名单与 dpid 随机型变，静态表装不下）。
     """
 
@@ -107,11 +116,28 @@ class CategoryPlugin:
     control_rights: bool = False
     """是否启用 247/248 多端操作权（001/002 为 True）。"""
 
+    control_rights_models: FrozenSet[str] = frozenset()
+    """实际使用 247/248 的机型主键白名单（空 = 不限机型）。
+
+    002 中仅 CBC/FFY/WLK/PGS/YJW 的 write 集合含 247/248；另有 12 个机型只在
+    read 集合残留 247/248（不写），若只按 `has_point(247)` 判定会误发抢权三帧。
+    白名单命中时对 `priority` 采用严格判据（必须是整数且非 0 才抢权）；
+    白名单为空（001/008）维持旧判据（`priority == 0` 才拦），行为不变。
+    """
+
+    control_disabled_models: FrozenSet[str] = frozenset()
+    """控制被禁用的机型主键集合（默认空 = 不限制）。
+
+    命中者仍被本品类认领并正常解析（只读传感器照常创建），只是
+    `WanjialeDevice.controls_enabled` 为 False：控制平台跳过该设备、`_send()` 拒绝下发。
+    与 `readonly_models` 的区别：后者直接不认领（回落通用只读设备）。
+    """
+
     requires_model_entry: bool = False
-    """是否要求设备**命中机型表**才可被认领（默认 False，旧插件不受影响）。
+    """是否要求设备命中机型表才可被认领（默认 False，旧插件不受影响）。
 
     置 True 时，`api._resolve_plugin` 在 `caps.model_points` 为空时返回 None
-    （回落通用只读）——008 的点位全在机型表里，设备 `firm` 缺失 / 机型未收录时
+    （回落通用只读）。008 的点位全在机型表里，设备 `firm` 缺失 / 机型未收录时
     主键拼不出（`caps.key=None`），`readonly_models` 也拦不住，若不拦就会用空点位
     建出「可开机」的主实体并允许下发。与 `readonly_models` 互补：
     后者拦「已收录但主动判只读」，本字段拦「根本没进表」。
@@ -206,7 +232,7 @@ def _resolve_specs(declared: Any, device: Any) -> Tuple[Any, ...]:
 
 
 def specs_for_platform(plugin: Optional[CategoryPlugin], platform: str) -> Tuple[Any, ...]:
-    """取某插件在某平台上的**静态** spec 表。
+    """取某插件在某平台上的静态 spec 表。
 
     函数式声明（`Callable[[device], …]`）需要设备上下文，请改走 `platform_specs()`；
     此处无设备可传，故函数式声明一律返回空表。

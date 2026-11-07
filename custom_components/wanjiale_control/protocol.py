@@ -1123,7 +1123,7 @@ class WanjialeProtocol:
         return data
 
     def close_local(self, did: Optional[str] = None) -> None:
-        """关闭局域网连接：指定 `did` 只关该设备，不指定则关闭**全部**。"""
+        """关闭局域网连接：指定 `did` 只关该设备，不指定则关闭全部。"""
         with self._local_links_lock:
             if did is None:
                 links = list(self._local_links.values())

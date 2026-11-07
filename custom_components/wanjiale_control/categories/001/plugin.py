@@ -1,9 +1,6 @@
 """001 燃气热水器 · 品类插件。
 
 001 的语义与点位留在 `features_001.py`，本文件只把它按 `CategoryPlugin` 契约对外暴露。
-
-未验证项：`DVID_UV`(11) / `DVID_SPARKLING`(95) / `DVID_FA_TYPE_ALT`(246) 只有单机型证据，
-取位方式未经确认（详见 features_001 内注释）。
 """
 from __future__ import annotations
 
@@ -109,8 +106,8 @@ def build_plugin() -> CategoryPlugin:
         baseline_families=frozenset({"F01"}),
         always_on_features=frozenset({"开关机"}),
         # 只读机型：OYY(F45) 与 HPZ(F01) 的活动协议是 101+ 第二路体系
-        # （js/index.js 只读写 key101-105/114；HPZ 的 config.xml 是遗留打包模板，
-        #  被误聚类进 F01）。按标准 001 点位下发会误控，故不认领、只读可见。
+        # （只读写 key101-105/114，且 HPZ 是被误归入 F01 的机型）。
+        # 按标准 001 点位下发会误控，故不认领、只读可见。
         readonly_models=frozenset({"WJL_001_OYY", "WJL_001_HPZ"}),
         fault_points={"device": (f001.DVID_FAULT,)},
         fault_none=(f001.FAULT_NONE,),

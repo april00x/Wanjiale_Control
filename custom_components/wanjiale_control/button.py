@@ -19,7 +19,7 @@ from . import registry
 from .api import WanjialeApi, WanjialeDevice
 from .const import DOMAIN
 from .entity import WanjialeEntity
-from .specs import ButtonSpec
+from .specs import ButtonSpec, require_points_satisfied
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,12 +35,18 @@ async def async_setup_entry(
 
     entities: List[WanjialeFeatureButton] = []
     for dev in api.devices:
+        if not dev.controls_enabled:
+            continue                      # 控制被禁用的机型：不出控制实体
+        points = getattr(dev.caps, "model_points", None) or {}
         for spec in registry.platform_specs(dev, "button"):
             if spec.feature and not dev.has_feature(spec.feature):
                 continue
             if spec.require_point and not dev.has_point(spec.require_point):
                 continue
-            for role in dev.role_views():
+            if not require_points_satisfied(spec, points):
+                continue
+            roles = [dev] if spec.device_level else dev.role_views()
+            for role in roles:
                 if not hasattr(role, spec.method):
                     continue
                 entities.append(WanjialeFeatureButton(dev, coordinator, role, spec))
@@ -65,4 +71,4 @@ class WanjialeFeatureButton(WanjialeEntity, ButtonEntity):
         self._attr_icon = spec.icon
 
     def press(self) -> None:
-        self._control(getattr(self.role, self._spec.method))
+        self._control(getattr(self.role, self._spec.method), *self._spec.method_args)

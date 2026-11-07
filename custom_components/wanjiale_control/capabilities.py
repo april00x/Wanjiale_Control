@@ -364,15 +364,75 @@ def effective_points(caps: DeviceCapabilities, observed: Iterable[str]) -> Set[s
     基线点位由插件声明：能力表的 `family` 命中 `plugin.baseline_families`
     时使用 `plugin.base_points`（如 001 的 F01 家族用完整 23 点基线），
     否则退回跨机型核心点位，避免为不存在的点位创建实体。
+
+    插件声明 `baseline_from_model_points=True` 时（002），基线改由机型点位表
+    （`caps.model_points`）递归收集，不再套用核心点位：002 的点位全部随能力表下发，
+    同一 dpid 跨机型语义互斥，核心兜底点位会引入无意义实体。
     """
     points = {str(p) for p in observed}
     plugin = _plugin_for(caps.product)
+    if plugin is not None and plugin.baseline_from_model_points:
+        points |= _baseline_from_model_points(caps.model_points)
+        return points
     families = frozenset(plugin.baseline_families) if plugin is not None else frozenset()
     if plugin is not None and (not families or caps.family in families):
         points |= set(plugin.base_points)
     else:
         points |= set(CORE_POINTS)
     return points
+
+
+# 机型点位表里可直接取 dpid 的标量键（含只写命令 dpid）。
+_BASELINE_SCALAR_KEYS = frozenset({
+    "dpid", "read", "write", "set", "req", "high", "low",
+    "list", "add", "del", "next", "total", "delete", "shared_temp",
+})
+
+# 机型点位表里「dpid 数组」的键（预约起止/使能/温度、复合包字节等）。
+_BASELINE_SEQUENCE_KEYS = frozenset({"bytes", "start", "end", "enable", "temp", "packed"})
+
+
+def _baseline_from_model_points(model_points: Any) -> Set[str]:
+    """递归收集机型点位表中的 dpid。
+
+    只收集「值是 dpid」的既定键，跳过 `mode.values` / `keep_warm.map` 这类
+    「键是取值」的字典，避免把模式号、保温档位当成 dpid。
+    `thermostats[]` 展开为 current/set/enable/fault/device_id。
+    """
+    found: Set[str] = set()
+
+    def add(value: Any) -> None:
+        if isinstance(value, bool):
+            return
+        if isinstance(value, int):
+            found.add(str(value))
+        elif isinstance(value, str) and value.isdigit():
+            found.add(value)
+        elif isinstance(value, dict):
+            add(value.get("dpid"))
+
+    def walk(node: Any) -> None:
+        if not isinstance(node, dict):
+            return
+        for key, value in node.items():
+            if key in _BASELINE_SCALAR_KEYS:
+                add(value)
+            elif key in _BASELINE_SEQUENCE_KEYS:
+                if isinstance(value, (list, tuple)):
+                    for item in value:
+                        add(item)
+            elif key == "thermostats":
+                for item in value or ():
+                    if isinstance(item, dict):
+                        for sub in ("current", "set", "enable", "fault", "device_id"):
+                            add(item.get(sub))
+            elif isinstance(value, dict):
+                # 嵌套点位组（如 `mode.cmd` / `schedule_*.master_cmd`）：继续向下找 dpid
+                walk(value)
+
+    walk(model_points if isinstance(model_points, dict) else {})
+    return found
+
 
 
 def resolve_features(
@@ -400,7 +460,10 @@ def resolve_features(
         probe_dvids = tuple(meta.get("probe_dvids") or ())
         probed = any(d in observed_set for d in probe_dvids)
         templated = name in caps.template_features
-        override = overrides.get(name, OVERRIDE_AUTO)
+        # 覆盖键：新格式 "{product}:{feature}" 优先，旧裸名回退（已存选项兼容）
+        override = overrides.get(f"{caps.product}:{name}")
+        if override is None:
+            override = overrides.get(name, OVERRIDE_AUTO)
         is_extra = bool(meta.get("extra"))
 
         if override == OVERRIDE_OFF:
@@ -481,18 +544,56 @@ def feature_owners() -> Dict[str, str]:
 
 
 def feature_options() -> Dict[str, str]:
-    """选项页「功能覆盖」多选项：`{值: 标签}`。
+    """选项页「功能覆盖」多选项：`{"{product}:{feature}": "{品类}:{feature}"}`。
 
-    值用裸功能名，与已存选项格式一致，用户升级无需迁移；标签用「品类:功能」，
-    多品类并存后靠品类前缀区分同名功能。
-    例：`{"开关机": "燃气热水器:开关机", ...}`。
+    必须按插件逐个生成：同名功能（如「开关机」）在多个品类下语义不同，
+    若先按功能名去重，后注册的品类会覆盖前者，导致另一个品类的同名功能无法单独控制。
     """
-    owners = feature_owners()
+    _ensure_plugins()
     options: Dict[str, str] = {}
-    for name in feature_choices():
-        category = owners.get(name, "")
-        options[name] = f"{category}:{name}" if category else name
+    for product, plugin in registry.registered().items():
+        for name in plugin.features:
+            options[f"{product}:{name}"] = f"{plugin.category_cn}:{name}"
     return options
+
+
+def feature_options_migrate(stored: Iterable[str]) -> List[str]:
+    """把已存的旧裸功能名迁移为 `"{product}:{feature}"` 选项键。
+
+    - 已带前缀的值原样保留（交由 `resolve_features` 的前缀优先逻辑处理）；
+    - 裸名按「后注册者覆盖」映射到认领它的品类（与 `feature_owners()` 同源）；
+      同名被多个品类认领时记 warning，提示用户在选项页重新确认；
+    - 无法归属（功能已下架）或空值丢弃并记 warning，避免选项页出现非法 default。
+    """
+    candidates: Dict[str, List[str]] = {}
+    for option_key in feature_options():
+        name = option_key.split(":", 1)[1]
+        candidates.setdefault(name, []).append(option_key)
+
+    migrated: List[str] = []
+    seen: Set[str] = set()
+    for raw in stored or ():
+        value = str(raw or "").strip()
+        if not value:
+            continue
+        if ":" in value:
+            target = value
+        else:
+            keys = candidates.get(value) or []
+            if not keys:
+                _LOGGER.warning("功能覆盖项 %s 未匹配任何已注册品类，迁移时已丢弃", value)
+                continue
+            target = keys[-1]
+            if len(keys) > 1:
+                _LOGGER.warning(
+                    "功能 %s 同时属于多个品类（%s），旧选项迁移为 %s，请在选项页重新确认",
+                    value, "、".join(keys), target,
+                )
+        if target in seen:
+            continue
+        seen.add(target)
+        migrated.append(target)
+    return migrated
 
 
 def fault_info(model_key: Optional[str], value: Any, product: str = "") -> Dict[str, str]:

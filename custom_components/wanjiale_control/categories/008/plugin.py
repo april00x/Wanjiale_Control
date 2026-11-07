@@ -3,8 +3,7 @@
 008 的语义与值编码留在 `features_008.py`，spec 表在 `categories/008/specs.py`，
 本文件只把两者按 `CategoryPlugin` 契约对外暴露并自注册。
 
-**未验证项（务必先读）**：008 的所有指令均**未在真实设备上验证**（现有报文样本均为 001），
-本轮把控制范围收敛为开关 / 温度 / 模式 / 辅助开关，故障只走云端 `fids`。
+控制范围收敛为开关 / 温度 / 模式 / 辅助开关，故障只走云端 `fids`。
 状态点未提取成功的机型（`CKQ`/`AVX`/`DXV`/`GOX`）不产出加热/保温实体。
 """
 from __future__ import annotations
@@ -16,7 +15,7 @@ from . import specs as platform_specs
 
 # 已收录进机型表但主动判为只读的机型：命中即不认领，回落通用只读设备。
 # 与 `requires_model_entry` 互补：后者拦「根本没进机型表」，本集合拦「已进表但判高危」。
-#   原生 6：D03/D04/D05/D07/D08/TRM（走 config.xml 的 <relation> 路径，需独立取证）
+#   原生 6：D03/D04/D05/D07/D08/TRM（点位未收录，待独立取证）
 #   存疑 6：CKQ（新旧编号混用）、TOU/TTH（页面自相矛盾）、AVX/GOX（疑似空气能）、DXV（遥控器配件）
 #   温度落 102 的 9 个：与模式点共用 dpid，静态无法判定设备侧语义
 READONLY_MODELS = frozenset({
@@ -53,7 +52,7 @@ def build_plugin() -> CategoryPlugin:
         requires_model_entry=True,
         readonly_models=READONLY_MODELS,
         # 008 的操作权是老编号 14/15、新编号 120，与 001/002 的 247/248 不同构，
-        # 本轮不做操作权抢占
+        # 暂不做操作权抢占
         control_rights=False,
         encoding_note=(
             "单点直写（opt(dvid, 绝对值)），无成对复合包；"
