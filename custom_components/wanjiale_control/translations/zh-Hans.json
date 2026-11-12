@@ -24,18 +24,49 @@
     "step": {
       "init": {
         "title": "万家乐 高级选项",
-        "description": "机型模板描述的是模板能力，与实机能力可能不一致（例如模板含零冷水点位、实机功能位未置起）。探测不到的功能可在此强制开启，误判的功能可强制关闭。保存后集成会自动重载。",
+        "description": "机型模板描述的是模板能力，与实机能力可能不一致（例如模板含零冷水点位、实机功能位未置起）。探测不到的功能可强制开启，误判的功能可强制关闭。功能覆盖按设备保存，同一账号下的多台设备互不影响，请先选择设备再勾选功能。保存后集成会自动重载。",
+        "menu_options": {
+          "account": "账号级设置",
+          "device": "按设备设置功能"
+        }
+      },
+      "account": {
+        "title": "账号级设置",
+        "description": "以下设置对整个账号生效，与具体设备无关。",
         "data": {
           "enable_control_rights": "启用多端操作权抢占（默认关闭）",
-          "feature_force_on": "强制开启的功能",
-          "feature_force_off": "强制关闭的功能"
+          "rescan_devices": "重新获取设备"
         },
         "data_description": {
           "enable_control_rights": "开启后，每次控制前会先用登录手机号抢占设备操作权（对应官方应用的多端互斥机制）。若你的机型不校验操作权，保持关闭即可。",
-          "feature_force_on": "即使未探测到，也为其创建实体。",
-          "feature_force_off": "即使机型模板声明支持，也不创建实体（用于消除误判或不需要的功能）。"
+          "rescan_devices": "勾选并保存后，本次重载会重新从云端拉取设备，使新设备加入 Home Assistant。该选项不会被保存，仅本次生效。"
+        }
+      },
+      "device": {
+        "title": "选择设备",
+        "description": "选择要配置功能覆盖的设备。每台设备单独保存，互不影响。",
+        "data": {
+          "device_did": "设备"
+        },
+        "data_description": {
+          "device_did": "只列出本账号下已加入 Home Assistant 的设备。"
+        }
+      },
+      "device_detail": {
+        "title": "设置功能覆盖",
+        "description": "勾选的功能会在「{device}」上创建实体，取消勾选则不创建。只影响这一台设备，保存后集成自动重载。",
+        "data": {
+          "device_features": "已开启的功能"
+        },
+        "data_description": {
+          "device_features": "列表按当前实际生效状态预先勾选：勾选即开启，取消即关闭。未改动过的功能保持按能力表自动判定。"
         }
       }
+    },
+    "abort": {
+      "not_loaded": "集成尚未完成初始化，暂时无法读取设备清单。请等待集成加载完成后再进入选项。",
+      "device_gone": "所选设备已不在集成中，请返回重新选择。",
+      "no_features": "该设备所属品类暂不支持功能覆盖。"
     }
   }
 }

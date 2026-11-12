@@ -80,6 +80,7 @@ class WanjialeEntity(CoordinatorEntity):
 
     @property
     def available(self) -> bool:
+        """可用性 = 通道可达（局域网或云端任一查询成功），不是云端在线状态。"""
         return self._device.online
 
     @property

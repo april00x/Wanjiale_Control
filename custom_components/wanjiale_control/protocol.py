@@ -341,6 +341,17 @@ def build_opt_message(
 # ======================================================================
 # 登录响应解析
 # ======================================================================
+class CredentialError(RuntimeError):
+    """登录响应表明凭据无效（密码错误 / 账号异常）。
+
+    判定按抛出位置与异常类型，不依赖服务端文案：
+      - 加密体长度为 0（服务器返回空加密数据）；
+      - AES 解密抛 `ValueError`（padding 校验失败，密码派生 key/iv 不匹配）；
+      - 解密后 uid 为空。
+    继承 RuntimeError，对既有 `except RuntimeError` / `except Exception` 调用方零影响。
+    """
+
+
 def parse_login_response(
     raw: bytes,
     password_md5: str,
@@ -383,12 +394,18 @@ def parse_login_response(
             "加密体为空！enc_len=%d bArr2_len=%d",
             enc_len, bArr2_len,
         )
-        raise ValueError("服务器返回空加密数据，请检查账号密码是否正确")
+        raise CredentialError("服务器返回空加密数据，请检查账号密码是否正确")
 
     # 解密（key/iv 为 password_md5 hex 字符串的前/后 16 字符）
     key = password_md5[:16].encode("utf-8")
     iv = password_md5[16:32].encode("utf-8")
-    decrypted = _aes_cbc_decrypt(encrypted, key, iv)
+    try:
+        decrypted = _aes_cbc_decrypt(encrypted, key, iv)
+    except ValueError as err:
+        # 密码派生 key/iv 不匹配时 padding 校验失败——这是「密码错误」最常见的形态，
+        # 不能当瞬时故障重试，否则每次都会白试一轮。
+        _LOGGER.debug("登录响应解密失败（padding 错误），按凭据错误处理")
+        raise CredentialError("登录响应解密失败，请检查账号密码是否正确") from err
 
     _LOGGER.debug("登录响应解密成功: %d 字节", len(decrypted))
 
@@ -423,7 +440,7 @@ def parse_login_response(
     result["server_port"] = _get_short(decrypted, 104)
 
     if not result["uid"]:
-        raise ValueError("未能从响应中解析出 uid，可能密码错误")
+        raise CredentialError("未能从响应中解析出 uid，可能密码错误")
 
     return result
 
@@ -486,6 +503,46 @@ def parse_local_login_response(raw: bytes, full_lan_pin: str) -> bool:
 # ======================================================================
 # HTTP 设备列表 / 签名
 # ======================================================================
+# 服务端「会话失效，请重新登录」类错误码（来源：error_codes.properties）
+# 10144=鉴权失败；10182 / 20015 / 00120009=会话已过期。
+# 10141 / 10142 / 10143 / 10148（缺或错 APIKey、timestamp、key）属请求构造问题，
+# 不在本集合内：重登只会掩盖实现缺陷，仍按普通错误抛出。
+AUTH_FAILED_CODES = frozenset({"10144", "10182", "20015", "00120009"})
+
+# 心跳应答 ACK 读取预算。抓包实测应答 55~65ms（capture_xintiao.pcap
+# 帧3109→3113 等），2s 余量充足；也是云端探测段三持锁读的最坏增量。
+CLOUD_HEARTBEAT_ACK_TIMEOUT = 2.0
+# 发心跳前排空积压的预算：现网实测空闲期 Recv-Q 可达 3125B。
+# 帧数上限按最坏构成取值：3125B 若全是 11B 的心跳 ACK ≈ 284 帧，
+# 200 帧会漏排 → 首轮「伪活」。提到 400 覆盖之；真正的上界是 0.5s 墙钟
+# （读已缓冲数据是毫秒级，不增加锁占用）；积压仍超出时留待下一轮。
+CLOUD_RX_DRAIN_TIMEOUT = 0.2
+CLOUD_RX_DRAIN_MAX_FRAMES = 400
+CLOUD_RX_DRAIN_MAX_SECONDS = 0.5
+
+
+class SessionExpiredError(RuntimeError):
+    """服务端判定 uid/api_key 已失效，需要重新登录。
+
+    继承 RuntimeError，对现有 `except RuntimeError` / `except Exception` 调用方向后兼容。
+    """
+
+    def __init__(self, code: str, payload: Any = None) -> None:
+        super().__init__(f"会话已失效（code={code}）")
+        self.code = code
+        self.payload = payload
+
+
+def _raise_if_auth_failed(data: Any) -> None:
+    """响应中带鉴权类错误码时抛 `SessionExpiredError`（兼容 int / str 两种 code）。"""
+    if not isinstance(data, dict) or data.get("code") is None:
+        return
+    code = str(data["code"])
+    if code in AUTH_FAILED_CODES:
+        _LOGGER.debug("设备列表鉴权失败: code=%s", code)
+        raise SessionExpiredError(code, data)
+
+
 def build_auth_headers(uid: str, api_key: str) -> Dict[str, str]:
     """构建 HTTP 请求头（ts/uid/key 签名）。
 
@@ -689,10 +746,19 @@ class WanjialeProtocol:
         self._socket: Optional[socket.socket] = None
         self._serial = random.randint(0, 9999)
         self._last_heartbeat = 0.0
+        # 最近一次收到完整帧（握手应答/心跳应答/业务帧）的时刻：僵死 socket 检测依据。
+        # send 基准的 _last_heartbeat 检测不到「服务端半关连接/静默丢链」——
+        # sendall 仍能成功写入内核缓冲，只有 recv 侧才能证明链路活着。
+        self._last_rx_at: float = 0.0
         self._heartbeat_interval = 40
         self._lock = threading.RLock()
         # 云端通道不可用的“首次”标记：网络长期不通时只在进入失败态时提示一次
         self._cloud_down: bool = False
+
+        # 会话恢复：relogin 节流时间戳；_closed 为卸载标记，必须在 _lock 内检查，
+        # 否则"检查后卸载"仍会留下无人关闭的云端长连接。
+        self._last_relogin: float = 0.0
+        self._closed: bool = False
 
         # 局域网连接按 did 独立维护：多设备共用一份 socket / lanPin 会误发。
         self._local_links: Dict[str, "_LocalLink"] = {}
@@ -708,8 +774,13 @@ class WanjialeProtocol:
         return self._serial
 
     # ---- TCP 登录 ----
-    def login(self) -> Dict[str, Any]:
-        """登录并获取 uid/api_key。"""
+    def login(self, quiet: bool = False) -> Dict[str, Any]:
+        """登录并获取 uid/api_key。
+
+        Args:
+            quiet: 为 True 时把「登录成功」从 INFO 降为 DEBUG（自动重登用，
+                避免最坏路径额外产生 3 条 INFO 污染日志）；默认行为不变。
+        """
         bArr2 = build_login_bArr2(self.username, USER_TYPE_NORMAL)  # 明文部分
         bArr = build_login_bArr(self.username, self.imei)  # 加密体部分
         serial = self._next_serial()
@@ -741,7 +812,10 @@ class WanjialeProtocol:
         self.server_port = result.get("server_port")
 
         # uid 属账号标识，不打进日志（诊断导出里同样是脱敏的）
-        _LOGGER.info("登录成功: 服务器=%s:%s", self.server_ip, self.server_port)
+        if quiet:
+            _LOGGER.debug("登录成功: 服务器=%s:%s", self.server_ip, self.server_port)
+        else:
+            _LOGGER.info("登录成功: 服务器=%s:%s", self.server_ip, self.server_port)
         return result
 
     # ---- HTTP 拉设备列表 ----
@@ -749,6 +823,10 @@ class WanjialeProtocol:
         """从 HTTP API 获取设备列表。"""
         if not self.uid or not self.api_key:
             raise RuntimeError("请先调用 login()")
+
+        # 凭据快照：重登时 login() 逐字段赋值，直接读实例属性可能拿到
+        # "新 uid + 旧 api_key" 的半更新组合，导致假 10144。
+        uid, api_key = self.uid, self.api_key
 
         try:
             import requests
@@ -758,7 +836,7 @@ class WanjialeProtocol:
         url = f"{self.http_base_url}/app/devices"
         resp = None
         try:
-            resp = requests.get(url, headers=build_auth_headers(self.uid, self.api_key), timeout=self.http_timeout)
+            resp = requests.get(url, headers=build_auth_headers(uid, api_key), timeout=self.http_timeout)
             resp.raise_for_status()
             data = resp.json()
         except Exception:
@@ -768,6 +846,7 @@ class WanjialeProtocol:
                 (getattr(resp, "text", "")[:200]) if resp is not None else "N/A",
             )
             raise
+        _raise_if_auth_failed(data)
         if "devs" in data:
             devs: list[Dict[str, Any]] = data["devs"]
             _LOGGER.info("获取到 %d 台设备", len(devs))
@@ -779,15 +858,18 @@ class WanjialeProtocol:
         if not self.uid or not self.api_key:
             raise RuntimeError("请先调用 login()")
 
+        uid, api_key = self.uid, self.api_key
+
         import aiohttp
 
         url = f"{self.http_base_url}/app/devices"
-        headers = build_auth_headers(self.uid, self.api_key)
+        headers = build_auth_headers(uid, api_key)
         timeout = aiohttp.ClientTimeout(total=self.timeout)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url, headers=headers) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
+        _raise_if_auth_failed(data)
         if "devs" in data:
             devs: list[Dict[str, Any]] = data["devs"]
             _LOGGER.info("获取到 %d 台设备", len(devs))
@@ -813,6 +895,12 @@ class WanjialeProtocol:
 
         _LOGGER.debug("正在连接长连接服务器 %s:%d", self.server_ip, self.server_port)
         with self._lock:
+            # 幂等：已有长连接直接复用，避免「查询回退 / relogin / 轮级探测」三条并发路径
+            # 各建一条 socket，后者覆盖前者造成连接泄漏。
+            # relogin()/reconnect() 都是「先 close_server() 再 connect_server()」，
+            # 因此这里返回 True 不会挡掉重建连接的路径。
+            if self._socket is not None:
+                return True
             self._socket = socket.create_connection(
                 (self.server_ip, self.server_port), timeout=self.timeout
             )
@@ -870,6 +958,48 @@ class WanjialeProtocol:
                     pass
                 self._socket = None
 
+    # ---- 会话恢复 ----
+    # 并发路径（设备列表刷新线程 / 未来的其它调用方）之间的最小重登间隔。
+    RELOGIN_MIN_INTERVAL = 60.0
+
+    def relogin(self) -> bool:
+        """会话失效后重新登录；原本有云端长连接则一并重建。
+
+        Returns:
+            True 表示本次确实执行了登录；False 表示被节流或协议已关闭，
+            两者都不算失败，调用方不应改变计数/状态。
+
+        Note:
+            本方法在 _lock 内执行网络登录与握手（最坏 ~20s），期间云端回退查询
+            与云端控制会阻塞等锁；局域网通道不受影响（走每设备独立的 link.lock）。
+            触发频率受 api 层（每日 ≤2 次、2h 最小间隔）与 60s 并发节流三重限制。
+        """
+        with self._lock:
+            if self._closed:
+                return False
+            now = time.monotonic()
+            if now - self._last_relogin < self.RELOGIN_MIN_INTERVAL:
+                return False
+            self._last_relogin = now
+
+            had_cloud = self._socket is not None
+            self.close_server()      # 旧 session_key 已作废，先断开再重新登录
+            self.login(quiet=True)   # 失败时异常向上抛，由调用方统一计数
+            if had_cloud:
+                try:
+                    if self.connect_server():
+                        self._cloud_down = False   # 复位"云端不可用"的一次性日志状态
+                except Exception:  # noqa: BLE001 - 云端重建失败不影响 HTTP 侧已恢复
+                    _LOGGER.warning("重新登录后长连接重建失败", exc_info=True)
+            return True
+
+    def close(self) -> None:
+        """卸载时调用：先置关闭标记，再释放云端/局域网连接。"""
+        with self._lock:
+            self._closed = True
+            self.close_server()
+        self.close_local()
+
     # ---- 云端控制 ----
     def send_control(self, did: str, as_dict: Dict[str, Any], timeout: Optional[float] = None) -> Dict[str, Any]:
         """通过云端发送控制命令（同步等待响应）。"""
@@ -907,7 +1037,11 @@ class WanjialeProtocol:
                     if resp_mid == mid:
                         return result
                 except ConnectionError:
-                    raise
+                    # 与 query_device 同口径：流损坏即关闭连接并返回错误，
+                    # 避免死 socket 残留 / 持锁忙等。
+                    _LOGGER.debug("send_control: 长连接流异常，关闭连接")
+                    self.close_server()
+                    return {"error": "connection closed"}
                 except socket.timeout:
                     continue
                 except Exception:
@@ -1283,52 +1417,72 @@ class WanjialeProtocol:
         return {"error": "timeout"}
 
     # ---- 响应解析 ----
-    def _recv_exact(self, n: int) -> bytes:
-        """从长连接 socket 读取精确 n 字节的数据。"""
+    def _recv_exact(self, n: int, timeout: Optional[float] = None) -> bytes:
+        """从长连接 socket 读取精确 n 字节的数据。
+
+        `timeout=None` 时按帧大小估算预算（`max(n/4096, 3.0)` 秒），与旧行为一致；
+        传入 `timeout` 时以它为单帧读预算（下限 0.05s），供探测层的心跳应答 /
+        排空积压等有界读使用。注意：本预算经 `settimeout` 生效，会覆盖调用方
+        进入前设置的 socket 超时。
+        """
         if n > 65535:
             raise RuntimeError(f"_recv_exact: 请求读取 {n} 字节，超过最大允许值")
         data = b""
-        deadline = time.time() + max(n / 4096.0, 3.0)
+        budget = max(n / 4096.0, 3.0) if timeout is None else max(float(timeout), 0.05)
+        deadline = time.time() + budget
         while len(data) < n:
             self._socket.settimeout(max(deadline - time.time(), 0.1))
-            chunk = self._socket.recv(n - len(data))
+            try:
+                chunk = self._socket.recv(n - len(data))
+            except socket.timeout:
+                if data:
+                    # 已读出部分字节后超时：帧边界未知，流状态不可信
+                    raise ConnectionError("半帧超时，流状态不可信") from None
+                raise   # 本次 recv 无任何已读字节 = 帧边界干净超时
             if not chunk:
                 raise ConnectionError("长连接已关闭")
-            if time.time() > deadline:
-                raise socket.timeout(f"_recv_exact: 读取超时, 已读 {len(data)}/{n}")
-            data += chunk
+            data += chunk            # 先并入：chunk 一经读出即视为已消费
+            if len(data) < n and time.time() > deadline:
+                raise ConnectionError("半帧超时，流状态不可信")   # 已读但不完整
         return data
 
-    def _recv_frame(self) -> Optional[bytes]:
+    def _recv_frame(self, timeout: Optional[float] = None) -> Optional[bytes]:
         """从长连接 socket 读取一个完整帧。
 
         处理心跳响应 AA BB 01（3字节）和标准协议帧（7+字节）。
         返回完整的帧字节，超时时返回 None。
+
+        `timeout=None` 时沿用 `_recv_exact` 的默认预算；传入时作为整帧每个
+        分段读的预算（调用方多按帧数×预算估算总量）。
         """
         try:
-            hdr = self._recv_exact(2)
+            hdr = self._recv_exact(2, timeout)
 
             if hdr[0] != 0xAA or hdr[1] != 0xBB:
-                return hdr
+                # 云端帧恒以 AA BB 开头（抓包已证），非魔数只可能是流错位：
+                # 直接判流不可信，交由调用方 close + 重连重同步（不再返回碎片）。
+                raise ConnectionError("帧头魔数不符，流状态不可信")
 
-            msg_type_byte = self._recv_exact(1)
+            msg_type_byte = self._recv_exact(1, timeout)
             msg_type = msg_type_byte[0] & 0xFF
 
             # 心跳 AA BB 01
             if msg_type == MSG_TYPE_HEARTBEAT:
+                self._last_rx_at = time.time()   # 收到完整帧 → 接收活性刷新
                 return bytes([0xAA, 0xBB, MSG_TYPE_HEARTBEAT])
 
             # 标准帧：剩余 4 字节头部
-            rest_hdr = self._recv_exact(4)
+            rest_hdr = self._recv_exact(4, timeout)
             header = hdr + msg_type_byte + rest_hdr
             extra_len = header[3] & 0xFF
             enc_len = _get_short(header, 5)
             if enc_len > 65535:
                 raise RuntimeError(f"_recv_frame: enc_len={enc_len} 异常")
 
-            body = self._recv_exact(extra_len + enc_len)
+            body = self._recv_exact(extra_len + enc_len, timeout)
+            self._last_rx_at = time.time()       # 收到完整帧 → 接收活性刷新
             return header + body
-        except (socket.timeout, ConnectionError):
+        except socket.timeout:
             return None
         except RuntimeError:
             _LOGGER.debug("_recv_frame: 帧头长度异常", exc_info=True)
@@ -1379,6 +1533,10 @@ class WanjialeProtocol:
         """发送心跳包（保持长连接）。
 
         心跳包为 3 字节：AA BB 01。
+
+        云端探测层段零也调用本方法（只发不收，对齐官方 App 每 40s 必发心跳的
+        节拍，防服务端空闲回收）；需要「发心跳并读应答」的链路验证请用
+        `send_heartbeat_with_ack()`。
         """
         if not self._socket:
             return False
@@ -1391,6 +1549,57 @@ class WanjialeProtocol:
             except Exception:
                 self.close_server()
                 return False
+
+    def send_heartbeat_with_ack(self) -> bool:
+        """先排空接收积压，再发心跳并等待新应答（2s 预算）。
+
+        为什么必须先排空：现网实测空闲期 Recv-Q 可达 3125B（≈2~284 帧，
+        取决于帧构成）。不排空时本方法读到的是陈旧帧，会把已死链路误判为活。
+
+        应答形态（抓包验证）：msgType=2、bArr2_len=4、enc_len=0 的 7+4 标准帧，
+        `_recv_frame` 正常返回非 None。若应答前先到达业务推送帧，同样算活
+        （该帧被本次消费，下一轮查询可补，轮询本身是主状态源）。
+
+        公有 API 契约：返回 False 即链路不可信，**socket 必为空或已关闭**——
+        `if not self._socket` 路径本就为空，EOF/发送失败/半帧/魔数各失败路径
+        统一就地关闭；调用方仅需 `connect_server()` 重握手。
+        """
+        if not self._socket:
+            return False
+        with self._lock:
+            # 1) 排空积压：队列空（读超时）或达帧数/时长上限即停
+            deadline = time.time() + CLOUD_RX_DRAIN_MAX_SECONDS
+            for _ in range(CLOUD_RX_DRAIN_MAX_FRAMES):
+                if time.time() >= deadline:
+                    break
+                try:
+                    if self._recv_frame(timeout=CLOUD_RX_DRAIN_TIMEOUT) is None:
+                        break
+                except ConnectionError:
+                    self.close_server()
+                    return False
+            # 2) 发心跳
+            try:
+                self._socket.settimeout(CLOUD_HEARTBEAT_ACK_TIMEOUT)
+                self._socket.sendall(b"\xAA\xBB\x01")
+                self._last_heartbeat = time.time()
+            except Exception:
+                self.close_server()
+                return False
+            # 3) 读新应答（此时队列已空，读到的必然是本次心跳后的帧）。
+            #    校验魔数属双保险：帧头魔数不符在 _recv_frame 内也会判流损坏；
+            #    保留本校验以防该判定回滚或未来新增返回路径。
+            try:
+                raw = self._recv_frame(timeout=CLOUD_HEARTBEAT_ACK_TIMEOUT)
+            except Exception:
+                self.close_server()
+                return False
+            if raw is None or raw[:2] != b"\xAA\xBB":
+                # ACK 超时（NAT 丢链）或魔数异常：链路不可信，统一就地关闭，
+                # 调用方仅需 connect_server() 重握手（公有 API 契约，见 docstring）
+                self.close_server()
+                return False
+            return True
 
     def _ensure_connected(self) -> None:
         """确保长连接可用（断线自动重连）。"""
@@ -1476,7 +1685,11 @@ class WanjialeProtocol:
                     if resp_mid == mid:
                         return result
                 except ConnectionError:
-                    raise
+                    # 流已损坏（EOF / 半帧 / 魔数错位）：就地关闭，等探测或下次
+                    # 查询重握手；不再持锁忙等满 timeout，也不把死 socket 留着。
+                    _LOGGER.debug("query_device: 长连接流异常，关闭连接")
+                    self.close_server()
+                    return {"error": "connection closed"}
                 except socket.timeout:
                     continue
                 except Exception:

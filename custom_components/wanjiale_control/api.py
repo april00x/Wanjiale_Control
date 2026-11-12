@@ -23,6 +23,7 @@ from . import features_001 as f001
 from . import features_008 as f008
 from . import registry
 from .capabilities import (
+    OVERRIDE_OFF,
     DeviceCapabilities,
     effective_points,
     ensure_plugins,
@@ -33,7 +34,14 @@ from .capabilities import (
     resolve,
     resolve_features,
 )
-from .protocol import LOCAL_PORT, LocalTransportUnsupported, WanjialeProtocol, normalize_fids
+from .protocol import (
+    LOCAL_PORT,
+    CredentialError,
+    LocalTransportUnsupported,
+    SessionExpiredError,
+    WanjialeProtocol,
+    normalize_fids,
+)
 from .registry import CategoryPlugin
 
 _LOGGER = logging.getLogger(__name__)
@@ -138,6 +146,50 @@ MAX_DEVICE_QUERY_TIMEOUT = 3.0
 # 窗口结束自动恢复尝试，不需要用户干预，也不会因一次抖动永久放弃局域网。
 LAN_RETRY_BACKOFF_SECONDS = 300.0
 
+# 不可用设备的探测间隔（秒）。可用设备按轮询间隔（10s）刷新；被判不可用的设备
+# 降频到 60s 探测一次，且探测时绕过局域网退避，避免恢复被 300s 退避窗口拖住。
+UNREACHABLE_PROBE_INTERVAL = 60.0
+
+# 可用性判定：局域网与云端连续 N 轮查询都失败（≈60s）才转不可用；任一轮成功即恢复。
+REACHABLE_FAIL_THRESHOLD = 6
+
+# HTTP 设备列表刷新周期（12h）：HTTP 只负责登录与元数据，不参与可用性与控制。
+DEVICE_LIST_REFRESH_SECONDS = 43200.0
+
+# 会话修复条件：局域网与云端会话同时连续 N 轮不可用（≈60s）才重新登录。
+REPAIR_LAN_FAIL_ROUNDS = 6
+REPAIR_CLOUD_FAIL_ROUNDS = 6
+
+# 云端会话「接收静默超龄」阈值：静默 = 2 × 协商心跳间隔，且不低于 60s
+# （与官方 App 的 heartbeatTime+20000 判死口径同量级；默认生效值 max(2×40s, 60s)=80s）。
+# 发送侧 sendall 在 FIN 半关 / NAT 静默丢链下仍会成功，只有接收活性才能证明链路活着。
+CLOUD_SOCKET_STALE_SECONDS_FACTOR = 2
+CLOUD_SOCKET_STALE_SECONDS_MIN = 60.0
+
+# 瞬时失败的退避阶梯（2h → 6h → 12h）与登录节流（api 层唯一事实源）。
+# protocol.relogin() 只保留 60s 并发节流，防多线程重复登录，不做 2h 限制。
+COOLDOWN_STEPS_SECONDS = (7200.0, 21600.0, 43200.0)
+RELOGIN_MIN_INTERVAL_SECONDS = 7200.0
+RELOGIN_DAILY_LIMIT = 2
+# 凭据类错误连续 N 次即停止自动重登（需人工改密后重载）
+CREDENTIAL_FAIL_THRESHOLD = 2
+
+# 自动重登总开关：
+# 只在「云端会话 + 局域网同时不可用 ≥60s（此时已无法控制任何设备）」时登录，
+# 且有 2h 最小间隔、每日 ≤2 次、凭据错误连续 2 次即停止。
+# 残留风险（尚未真机确认）：HA 侧断网而手机 App 走蜂窝正常时，重登会把 App 顶下线；
+# 若实机验证后不可接受，把常量改回 False 即退化为「全断也不登录」，结构不变。
+AUTO_RELOGIN_ENABLED = True
+
+
+def _next_midnight(now: float) -> float:
+    """返回本地时间「次日 00:00」的 epoch 秒（每日登录上限用）。"""
+    local = time.localtime(now)
+    return time.mktime((
+        local.tm_year, local.tm_mon, local.tm_mday + 1,
+        0, 0, 0, 0, 0, -1,
+    ))
+
 
 def device_query_timeout(device_count: int) -> float:
     """按在线设备数分配单台单次查询超时，保证一轮刷新不超出轮询间隔。
@@ -174,7 +226,12 @@ class WanjialeDevice:
         self.product: str = str(raw_device.get("product") or "")
         self.firm: str = str(raw_device.get("firm") or "")
         self.ver: str = str(raw_device.get("ver") or "")
-        self.online: bool = bool(raw_device.get("online"))
+        # 云端设备列表里的 online：仅作历史快照/诊断，不参与可用性判定
+        self.cloud_online: bool = bool(raw_device.get("online"))
+        # 可用性（=实体 available）：启动时按可用，首轮探测后收敛
+        self.online: bool = True
+        # 连续「两通道都失败」轮数，达到 REACHABLE_FAIL_THRESHOLD 转不可用
+        self._query_fail_streak: int = 0
 
         # 局域网控制参数
         self.local_host: Optional[str] = raw_device.get("lanIp")
@@ -211,7 +268,9 @@ class WanjialeDevice:
         self.control_rights: bool = False
         self.login_name: str = ""
 
-        self._last_seen_online: float = time.time() if self.online else 0.0
+        self._last_seen_online: float = 0.0
+        # 上次查询时间：不可用设备按 UNREACHABLE_PROBE_INTERVAL 降频探测
+        self._last_probe: float = 0.0
         self._last_control_time: float = 0.0
         self._optimistic: Dict[str, Any] = {}
         # 状态查询的“首次失败”标记：设备长期不可达时只在进入失败态时记录一次，
@@ -486,7 +545,7 @@ class WanjialeDevice:
             return
         # 第一帧由品类插件给出（001 是「命令类型 24 + 开关值 1」的成对命令）。
         # 声明 control_rights=True 即意味着必须实现该动作；未实现则整体放弃抢权
-        # （宁可不抢，也不发半套帧）。points 透传让 002 可按方言决定是否支持。
+        # （宁可不抢，也不发半套帧）。points 透传让 002 可按协议变体决定是否支持。
         try:
             request_frame = plugin.encode_value(
                 "control_right", points=self.caps.model_points or {}
@@ -1154,7 +1213,7 @@ class WanjialeGasBoiler(WanjialeDevice):
     `WaterHeaterProto`/`ClimateProto`，避免同一个 `target_temperature` 服务两个实体。
     组实体（预约开关/温度/时间）由 `device_level=True` 的 spec 直接对设备渲染。
 
-    A 线（dialect=A）走命令字加 32 位复合包，B/C 系为单键直写，均由 `encode_value`
+    A 类（protocol_variant=A）走命令字加 32 位复合包，B 类/C 类为单键直写，均由 `encode_value`
     按机型点位分支处理。
     """
 
@@ -1169,9 +1228,9 @@ class WanjialeGasBoiler(WanjialeDevice):
     def bind_capabilities(self, caps: DeviceCapabilities) -> None:
         super().bind_capabilities(caps)
         self._roles = None
-        # 只有 A 线老设备在局域网下必须发单键报文（两键会 LocalTransportUnsupported
-        # 而回退云端）；B/C 误置会把局域网多键全部误判为老设备并回退云端。
-        self.is_old = (caps.model_points or {}).get("dialect") == "A"
+        # 只有 A 类机型在局域网下必须发单键报文（两键会 LocalTransportUnsupported
+        # 而回退云端）；B 类/C 类误置会把局域网多键全部误判为老设备并回退云端。
+        self.is_old = (caps.model_points or {}).get("protocol_variant") == "A"
 
     def role_views(self) -> List[Any]:
         if self._roles is None:
@@ -1218,11 +1277,11 @@ class WanjialeGasBoiler(WanjialeDevice):
     def _commit(self, frame: Dict[str, str], optimistic: bool = True) -> None:
         """下发并更新状态缓存。
 
-        A 线 `{1, 2}` 是命令通道、不是状态点，写进 state 既不会更新目标温度，
+        A 类 `{1, 2}` 是命令通道、不是状态点，写进 state 既不会更新目标温度，
         又会在冷却期污染状态缓存；只有 `{4: 0/1}` 这类真实状态点才做乐观更新。
         """
         self._send(frame)
-        if self._points().get("dialect") == "A":
+        if self._points().get("protocol_variant") == "A":
             if optimistic and set(frame) == {"4"}:
                 self.optimistic(frame)
             else:
@@ -1316,8 +1375,8 @@ class WanjialeGasBoiler(WanjialeDevice):
         high = int(spec.get("max", 60))
         value = max(low, min(high, int(round(float(temperature)))))
         params: Dict[str, Any] = {}
-        if self._points().get("dialect") == "A":
-            # A 线 cmd4 的复合包需要沿用当前卫浴模式 / 水流 / 水量（未知时 0xFF 不修改）
+        if self._points().get("protocol_variant") == "A":
+            # A 类 cmd4 的复合包需要沿用当前卫浴模式 / 水流 / 水量（未知时 0xFF 不修改）
             params = {
                 "mode": self.parsed.get("dhw_mode"),
                 "flow": self.parsed.get("target_flow"),
@@ -1359,7 +1418,7 @@ class WanjialeGasBoiler(WanjialeDevice):
         self._ensure("即热")
         self._require("instant_mode", "instant")
         params: Dict[str, Any] = {}
-        if self._points().get("dialect") == "A":
+        if self._points().get("protocol_variant") == "A":
             # 部分 A 机型 cmd14 采用「on/off + 温度」形态，温度未知时写 0xFF 不修改
             params["temp"] = self.parsed.get("dhw_target_temp")
         self._commit(self._frame("instant", on=bool(on), **params))
@@ -1370,7 +1429,7 @@ class WanjialeGasBoiler(WanjialeDevice):
         if spec.get("total") is None and not spec.get("master_cmd"):
             raise WanjialeControlError("该机型未配置热水预热总开关点位")
         params: Dict[str, Any] = {}
-        if self._points().get("dialect") == "A":
+        if self._points().get("protocol_variant") == "A":
             params["temp"] = self.parsed.get("dhw_target_temp")
         self._commit(self._frame("preheat_master", on=bool(on), **params))
 
@@ -1383,7 +1442,7 @@ class WanjialeGasBoiler(WanjialeDevice):
         if spec.get("total") is None and not spec.get("master_cmd"):
             raise WanjialeControlError("该机型未配置预约供暖总开关点位")
         params: Dict[str, Any] = {}
-        if self._points().get("dialect") == "A":
+        if self._points().get("protocol_variant") == "A":
             params["temp"] = self.parsed.get("dhw_target_temp")
         self._commit(self._frame("heat_schedule_master", on=bool(on), **params))
 
@@ -1420,7 +1479,7 @@ class WanjialeGasBoiler(WanjialeDevice):
             raise WanjialeControlError("设备处于待机状态，请先开机")
 
     def set_emitter(self, value: int) -> None:
-        """采暖末端：A 线 cmd43 复合包 / B3 直写 120。"""
+        """采暖末端：A 类 cmd43 复合包 / B3 直写 120。"""
         self._ensure("")
         self._require_power_on()
         self._require("heating", "emitter")
@@ -1433,7 +1492,7 @@ class WanjialeGasBoiler(WanjialeDevice):
         self._commit(self._frame("emitter", value=int(value), **params), optimistic=False)
 
     def set_eco(self, on: bool) -> None:
-        """节能/睡眠（仅 A 线 cmd38）。"""
+        """节能/睡眠（仅 A 类 cmd38）。"""
         self._ensure("")
         self._require_power_on()
         self._require("heating")
@@ -1447,7 +1506,7 @@ class WanjialeGasBoiler(WanjialeDevice):
         self._commit(self._frame("away", on=bool(on)), optimistic=False)
 
     def set_circulation(self, value: int) -> None:
-        """即热时长：A 线 cmd26 / B3 直写 118。"""
+        """即热时长：A 类 cmd26 / B3 直写 118。"""
         self._ensure("")
         self._require_power_on()
         self._require("circulation")
@@ -1463,7 +1522,7 @@ class WanjialeGasBoiler(WanjialeDevice):
         self._commit(self._frame("wash_master", on=bool(on)), optimistic=False)
 
     def set_jog(self, on: bool) -> None:
-        """点动：仅 B3 的 jog(117, writable)；A 线 68 只读，拒绝下发。"""
+        """点动：仅 B3 的 jog(117, writable)；A 类 68 只读，拒绝下发。"""
         self._ensure("")
         self._require_power_on()
         if self._point("jog").get("writable") is not True:
@@ -1507,9 +1566,9 @@ class WanjialeGasBoiler(WanjialeDevice):
         params: Dict[str, Any] = {
             "kind": kind, "group": int(group), "field": str(field), "minutes": int(minutes),
         }
-        # A 线与 B3 洗浴预约都是「同组起止整包」，必须先从回读值取另一端，拿不到就报错
+        # A 类与 B3 洗浴预约都是「同组起止整包」，必须先从回读值取另一端，拿不到就报错
         packed_group = kind == "wash" and bool(sched.get("packed"))
-        if self._points().get("dialect") == "A" or packed_group:
+        if self._points().get("protocol_variant") == "A" or packed_group:
             other_field = "end" if str(field) == "start" else "start"
             other = self.parsed.get(f"{kind}_schedule_{int(group)}_{other_field}")
             if other is None:
@@ -1543,8 +1602,8 @@ class WanjialeGasBoiler(WanjialeDevice):
         feature = self._SCHEDULE_FEATURE.get(kind)
         if feature:
             self._ensure(feature)
-        if self._points().get("dialect") == "A" and packed_value is None:
-            # A 线删除同样需要整组起止；从 list 回读值合成，不写半包
+        if self._points().get("protocol_variant") == "A" and packed_value is None:
+            # A 类删除同样需要整组起止；从 list 回读值合成，不写半包
             start = self.parsed.get(f"{kind}_schedule_{int(group)}_start")
             end = self.parsed.get(f"{kind}_schedule_{int(group)}_end")
             if start is None or end is None:
@@ -1580,7 +1639,7 @@ class WanjialeGasBoiler(WanjialeDevice):
         self._commit(self._frame("thermostat", n=int(n), on=bool(on)), optimistic=False)
 
     # ------------------------------------------------------------------
-    # A 线专属动作（编码已在 features_002 落地）
+    # A 类专属动作（编码已在 features_002 落地）
     # ------------------------------------------------------------------
     def set_morning_night(self, mode: int) -> None:
         self._ensure("晨浴夜浴")
@@ -1617,17 +1676,37 @@ class WanjialeApi:
     def __init__(
         self,
         protocol: WanjialeProtocol,
-        feature_overrides: Optional[Dict[str, str]] = None,
+        feature_overrides: Optional[Dict[str, Dict[str, str]]] = None,
         enable_control_rights: bool = False,
         login_name: str = "",
     ) -> None:
         self._protocol = protocol
         self._devices: List[WanjialeDevice] = []
-        self._feature_overrides = feature_overrides or {}
+        # 设备级功能覆盖：{did: {功能名: OVERRIDE_ON/OFF}}，同类多台设备互不影响
+        self._feature_overrides: Dict[str, Dict[str, str]] = feature_overrides or {}
         self._enable_control_rights = enable_control_rights
         self._login_name = login_name
-        self._last_device_list_refresh: float = 0.0
-        self._bg_device_list_interval: float = 300.0
+        # HTTP 设备列表探针：启动时拉取一次，之后 12h 一次（只做登录+元数据）
+        self._http_ok: bool = True
+        self._http_checked_at: float = 0.0
+        # 设备列表门控锁：每 10s 起一个新线程，"检查+更新时间戳"必须原子化
+        self._device_list_gate = threading.Lock()
+        # 会话状态机：OK / DEGRADED / RECOVERING / COOLDOWN / REAUTH_REQUIRED
+        self._auth_state: str = "OK"
+        # 会话修复状态机（B3）：退避时刻、最小间隔、每日上限、凭据失败计数
+        self._next_auth_retry_at: float = 0.0
+        self._auth_last_login_at: float = 0.0
+        self._auth_daily_count: int = 0
+        self._auth_daily_date: str = ""
+        self._cooldown_step: int = 0
+        self._credential_fail_streak: int = 0
+        # 通道健康（轮级）：云端会话与局域网各记连续失败轮数
+        self._cloud_session_ok: bool = True
+        self._lan_ok: bool = True
+        self._cloud_down_rounds: int = 0
+        self._lan_fail_rounds: int = 0
+        # 本轮各设备局域网查询是否成功（did → bool），每轮开头清空
+        self._lan_leg_ok: Dict[str, bool] = {}
         # 局域网查询失败退避：did → 允许再次尝试局域网的时间戳（见 _arm_lan_backoff）
         self._lan_retry_after: Dict[str, float] = {}
 
@@ -1653,8 +1732,36 @@ class WanjialeApi:
     # ------------------------------------------------------------------
     # 设备加载
     # ------------------------------------------------------------------
-    def load_devices(self) -> List[WanjialeDevice]:
+    def load_devices(
+        self,
+        allow_new: bool = True,
+        known_dids: Optional[Set[str]] = None,
+    ) -> List[WanjialeDevice]:
+        """登录后拉取设备列表并构建设备对象。
+
+        `allow_new=False` 时只加载 `known_dids`（设备注册表里已有的 did），
+        云端多出的设备跳过并汇总为 1 条 INFO：新设备仅在首次安装或用户在
+        选项页勾选「重新获取设备」后才加入，避免云端新增设备被动出现在 HA。
+        """
         raw_list = self._protocol.get_devices()
+        if not allow_new:
+            known = known_dids or set()
+            admitted = []
+            skipped: List[str] = []
+            for raw in raw_list:
+                did = str(raw.get("did") or "")
+                if did in known:
+                    admitted.append(raw)
+                else:
+                    skipped.append(did)
+            if skipped:
+                raw_list = admitted
+                _LOGGER.info(
+                    "跳过 %d 台未准入的云端设备（%s）；如需加入请在选项页勾选"
+                    "「重新获取设备」并保存",
+                    len(skipped),
+                    "、".join(_short_did(did) for did in skipped),
+                )
         self._devices = []
         for raw in raw_list:
             caps = resolve(
@@ -1678,7 +1785,24 @@ class WanjialeApi:
             self._devices.append(dev)
 
         self._discover_lan()
+        # 启动时已通过 HTTP 拉过一次设备列表：把时间戳种进来，
+        # 否则首个后台线程会认为「epoch 0 距今已超过 12h」而再拉一次。
+        self._http_checked_at = time.time()
+        self._http_ok = True
         return self._devices
+
+    def set_feature_overrides(self, overrides: Optional[Dict[str, Dict[str, str]]]) -> None:
+        """设置设备级功能覆盖（须在 `finalize_features` 之前调用）。
+
+        覆盖值形如 `{did: {"功能名": OVERRIDE_ON/OFF}}`：选项按设备保存，
+        因此必须等设备加载完、拿到 did 之后才能换算。
+        """
+        self._feature_overrides = overrides or {}
+
+    def disabled_features(self, did: str) -> Set[str]:
+        """该设备被显式关闭的功能名（选项页里取消勾选的项）。"""
+        overrides = self._feature_overrides.get(str(did)) or {}
+        return {name for name, mode in overrides.items() if mode == OVERRIDE_OFF}
 
     def finalize_features(self) -> None:
         """首次状态刷新后确定各设备的功能集合（实体创建的依据）。
@@ -1689,7 +1813,7 @@ class WanjialeApi:
         """
         for dev in self._devices:
             try:
-                dev.finalize_features(self._feature_overrides)
+                dev.finalize_features(self._feature_overrides.get(str(dev.did)))
             except Exception:  # noqa: BLE001
                 _LOGGER.warning("解析设备 %s 能力失败", _short_did(dev.did), exc_info=True)
         preload_faults(dev.caps.product for dev in self._devices)
@@ -1745,20 +1869,26 @@ class WanjialeApi:
 
         threading.Thread(target=self._try_refresh_device_list, daemon=True).start()
 
-        online = [dev for dev in self._devices if dev.online]
-        # 按在线设备数分配单台超时，避免设备数一多单轮就超出轮询间隔
-        timeout = device_query_timeout(len(online))
+        # 本轮局域网成功标记：由 _query_device_lan 逐台写入，用于通道健康计数
+        self._lan_leg_ok.clear()
+        targets = self._select_poll_targets()
+        # 按本轮参与设备数分配单台超时，避免设备数一多单轮就超出轮询间隔
+        timeout = device_query_timeout(len(targets))
 
-        for dev in online:
-            result = self._query_with_fallback(dev, timeout)
+        for dev in targets:
+            # 不可用设备属于 60s 一次的探测：force 绕过局域网退避，成功即快速恢复
+            force = not dev.online
+            dev._last_probe = time.time()
+            result = self._query_with_fallback(dev, timeout, force=force)
             if not isinstance(result, dict) or result.get("error"):
                 self._report_query_failure(
                     dev, result.get("error") if isinstance(result, dict) else result
                 )
+                self._mark_unreachable(dev)
                 continue
-            if dev._query_failed_logged:
-                dev._query_failed_logged = False
-                _LOGGER.info("设备 %s 状态查询已恢复", dev.name)
+            # 成功口径以「result 无 error」为准：`as` 为空的响应同样刷新可用性
+            self._mark_reachable(dev)
+            dev._query_failed_logged = False
             as_data = result.get("as")
             if not (isinstance(as_data, dict) and as_data):
                 continue
@@ -1771,7 +1901,39 @@ class WanjialeApi:
                 dev.parsed.get("mode"),
             )
 
-    def _query_with_fallback(self, dev: WanjialeDevice, timeout: float) -> Dict[str, Any]:
+        # 轮级通道健康：云端会话只探测一次（不按设备重复），并维护 DEGRADED 标记
+        self._update_channel_health(self._evaluate_lan_round())
+
+    def _mark_reachable(self, dev: WanjialeDevice) -> None:
+        """本轮任一通道查询成功：清零失败计数，恢复可用时输出 1 条 INFO。"""
+        dev._query_fail_streak = 0
+        dev._last_seen_online = time.time()
+        if not dev.online:
+            dev.online = True
+            _LOGGER.info("设备 %s 已恢复可用", dev.name)
+
+    def _mark_unreachable(self, dev: WanjialeDevice) -> None:
+        """本轮两通道都失败：连续失败达到阈值才转不可用（迁移时 1 条 INFO）。"""
+        dev._query_fail_streak += 1
+        if dev.online and dev._query_fail_streak >= REACHABLE_FAIL_THRESHOLD:
+            dev.online = False
+            _LOGGER.info(
+                "设备 %s 连续 %d 轮查询失败，标记为不可用",
+                dev.name, dev._query_fail_streak,
+            )
+
+    def _select_poll_targets(self) -> List[WanjialeDevice]:
+        """本轮参与查询的设备：可用设备每轮都查，不可用设备降频到 60s 探测一次。"""
+        now = time.time()
+        return [
+            dev
+            for dev in self._devices
+            if dev.online or now - dev._last_probe >= UNREACHABLE_PROBE_INTERVAL
+        ]
+
+    def _query_with_fallback(
+        self, dev: WanjialeDevice, timeout: float, force: bool = False
+    ) -> Dict[str, Any]:
         """局域网优先，失败回退云端。
 
         主因：局域网上设备会约 1 帧/秒主动推送增量（`cmd=post`），而
@@ -1785,7 +1947,7 @@ class WanjialeApi:
         """
         result: Dict[str, Any] = {"error": "无可用通道"}
         try:
-            result = self._query_device_lan(dev, timeout)
+            result = self._query_device_lan(dev, timeout, force=force)
         except Exception as err:  # noqa: BLE001
             # 该函数内部已兜住常规失败，走到这里属意料之外；有退避窗口，不会每轮触发
             _LOGGER.error("局域网查询 %s 异常：%s", dev.name, err, exc_info=True)
@@ -1802,15 +1964,21 @@ class WanjialeApi:
             return {"error": "云端未建立长连接"}
         return self._protocol.query_device(dev.did, timeout=timeout)
 
-    def _query_device_lan(self, dev: WanjialeDevice, timeout: float) -> Dict[str, Any]:
+    def _query_device_lan(
+        self, dev: WanjialeDevice, timeout: float, force: bool = False
+    ) -> Dict[str, Any]:
         """局域网查询；连接与认证都限制在本次轮询预算内。
 
         失败时记录退避（`_arm_lan_backoff`），避免"局域网持续不可用"被每轮重试放大。
+        `force=True` 供不可用设备的 60s 探测使用：只跳过退避检查，探测失败仍照常
+        记录退避，否则 60s 窗口内会每轮真连一次。
         """
         if not dev.is_lan_available():
             return {"error": "未发现局域网地址"}
-        if time.time() < self._lan_retry_after.get(dev.did, 0.0):
+        if not force and time.time() < self._lan_retry_after.get(dev.did, 0.0):
             return {"error": "局域网退避中"}
+        # 本轮局域网健康默认失败，成功后置 True（退避/无地址都按失败计）
+        self._lan_leg_ok[dev.did] = False
         try:
             # 连接按 did 维护：只检查/建立这台设备自己的链路
             if not self._protocol.is_local_connected(dev.did):
@@ -1829,6 +1997,7 @@ class WanjialeApi:
             self._arm_lan_backoff(dev)
         else:
             self._lan_retry_after.pop(dev.did, None)
+            self._lan_leg_ok[dev.did] = True
         return result
 
     def _arm_lan_backoff(self, dev: WanjialeDevice) -> None:
@@ -1857,26 +2026,246 @@ class WanjialeApi:
             _LOGGER.error("async_refresh_all 失败", exc_info=True)
 
     # ------------------------------------------------------------------
-    # 后台刷新设备列表（更新在线状态 / 局域网参数）
+    # HTTP 设备列表探针（12h 一次，只更新元数据）
     # ------------------------------------------------------------------
     def _try_refresh_device_list(self) -> None:
-        now = time.time()
-        if now - self._last_device_list_refresh < self._bg_device_list_interval:
+        """后台 HTTP 探针：启动时已拉取一次，之后每 DEVICE_LIST_REFRESH_SECONDS 一次。
+
+        10144 只代表元数据过期：置 `_http_ok=False` 暂停探针，不影响可用性、
+        状态与控制，也不在这里发起登录（会话修复由状态机统一负责）。
+        """
+        # 检查+更新必须原子化：每 10s 起一个线程，无锁时小概率双线程同时通过门控
+        with self._device_list_gate:
+            now = time.time()
+            if now - self._http_checked_at < DEVICE_LIST_REFRESH_SECONDS:
+                return
+            self._http_checked_at = now
+
+        # 已卸载 / 已停止自动修复时不发请求（单一事实源在 protocol._closed）
+        if self._protocol._closed or self._auth_state in ("COOLDOWN", "REAUTH_REQUIRED"):
             return
-        self._last_device_list_refresh = now
+        if not self._http_ok:      # 10144 后暂停，直到重新登录/重载
+            return
+
         try:
             raw_list = self._protocol.get_devices()
+        except SessionExpiredError:
+            self._http_ok = False
+            _LOGGER.warning("设备元数据已过期（会话失效），将暂停刷新直到重新登录/重载")
+            return
         except Exception as err:  # noqa: BLE001
+            # 网络/响应格式类错误保持现状：真实异常，保留堆栈
             _LOGGER.warning("后台刷新设备列表失败：%s", err, exc_info=True)
             return
+
+        self._http_ok = True
         try:
             self._apply_device_list(raw_list)
         except Exception:  # noqa: BLE001
+            # `_apply_device_list` 会调用 `dev.refresh()` → 品类解析；
+            # 异常不得从 daemon 线程顶层逃逸（下个周期会重新拉取）。
             _LOGGER.error("应用设备列表时异常", exc_info=True)
 
-    def _apply_device_list(self, raw_list: List[Dict[str, Any]]) -> None:
-        did_to_device = {dev.did: dev for dev in self._devices}
+    # ------------------------------------------------------------------
+    # 通道健康（轮级）
+    # ------------------------------------------------------------------
+    def _probe_cloud_session(self) -> bool:
+        """云端会话探测（四段）：每轮最多一次，不按设备重复。
+
+        段零 心跳节拍：距上次心跳 ≥ 协商间隔 → 裸心跳（只发不收），失败即 False；
+        段一 socket 为空 → connect_server()（补「局域网全好时无人重连」的缺口）；
+        段二 socket 存在且接收新鲜（_last_rx_at 未超龄）→ 健康（零开销）；
+        段三 接收静默超龄 → 先排空积压再 send_heartbeat_with_ack() 验证：
+             有应答帧 → True（业务静默，不折腾）；
+             无应答   → with_ack 已就地 close，再强制重握手校验会话
+                        （会话死 → False → _cloud_down_rounds 增长）。
+
+        「socket 存在」不再直接视为健康：FIN 半关 / 静默丢链下 TCP 仍是
+        ESTABLISHED、sendall 仍会成功，只看 socket 存在与否，_cloud_down_rounds
+        永不增长，全断自愈失效。重握手用既有 session_key（msg 10），非登录动作，
+        无顶号风险。
+        """
+        proto = self._protocol
+        sock = proto._socket
+        if sock is not None:
+            # 段零：心跳节拍维护（复用 send_heartbeat，只发不收；对齐 App 40s 节奏）
+            if time.time() - proto._last_heartbeat >= proto._heartbeat_interval:
+                if not proto.send_heartbeat():
+                    return False                  # send 失败 → 已 close，本轮计失败
+            # 段二：接收新鲜 → 健康
+            stale_after = max(
+                CLOUD_SOCKET_STALE_SECONDS_FACTOR * proto._heartbeat_interval,
+                CLOUD_SOCKET_STALE_SECONDS_MIN,
+            )
+            if time.time() - proto._last_rx_at < stale_after:
+                return True
+            # 段三：静默超龄 → 先排空积压，再发心跳读新应答（现网 Recv-Q 可达 3125B）
+            if proto.send_heartbeat_with_ack():
+                return True
+            # 无应答 → 僵死嫌疑成立：断开重握手（握手校验会话：死了 → False → 计数增长）。
+            # 这行 close 是防御性的：with_ack 契约保证 False 时 socket 已空/已关，
+            # close_server() 幂等（`if self._socket:`），契约成立时是空操作、成本为零；
+            # 保留它让探测层不依赖 with_ack 失败路径的内部实现。
+            proto.close_server()
+            try:
+                return bool(proto.connect_server())
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("云端会话重握手失败：%s", err)
+                return False
+        # 段一：socket 为空 → 主动握手
+        try:
+            return bool(proto.connect_server())
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("云端会话探测失败：%s", err)
+            return False
+
+    def _evaluate_lan_round(self) -> bool:
+        """本轮局域网是否至少有一台设备查询成功。
+
+        分母 = 具备局域网参数的设备；纯云端账号（分母为 0）按「本轮 LAN 全失败」计，
+        否则会话过期后永远不会触发修复。退避中的设备不在 `_lan_leg_ok` 里，按失败计。
+        """
+        lan_devices = [dev for dev in self._devices if dev.is_lan_available()]
+        if not lan_devices:
+            return False
+        return any(self._lan_leg_ok.get(dev.did, False) for dev in lan_devices)
+
+    def _update_channel_health(self, lan_round_ok: bool) -> None:
+        """更新两条通道的连续失败轮数，维护 DEGRADED 标记并触发会话修复。"""
+        if getattr(self._protocol, "_closed", False):
+            return
+        if self._auth_state == "REAUTH_REQUIRED":
+            # 终态：跳过探测，计数与 DEGRADED 迁移全部冻结（仅重载可退出）。
+            # 否则凭据失效期间 socket 必为空，每轮都会真实 TCP+握手一次（≈8640 次/天）。
+            return
+        cloud_ok = self._probe_cloud_session()
+        was_cloud_ok = self._cloud_session_ok
+
+        self._cloud_session_ok = cloud_ok
+        self._lan_ok = lan_round_ok
+        self._cloud_down_rounds = 0 if cloud_ok else self._cloud_down_rounds + 1
+        self._lan_fail_rounds = 0 if lan_round_ok else self._lan_fail_rounds + 1
+
+        if cloud_ok:
+            if not was_cloud_ok:
+                _LOGGER.info("云端长连接已恢复")
+            # 通道已恢复：退出 DEGRADED/COOLDOWN，清掉退避阶梯
+            if self._auth_state in ("DEGRADED", "COOLDOWN"):
+                self._auth_state = "OK"
+            self._next_auth_retry_at = 0.0
+            self._cooldown_step = 0
+            return
+
+        if lan_round_ok:
+            # 有一条通道能控就不登录（不碰官方 App 会话），只标记降级
+            if self._auth_state in ("OK", "COOLDOWN"):
+                self._auth_state = "DEGRADED"
+                self._next_auth_retry_at = 0.0
+                _LOGGER.warning(
+                    "云端会话不可用，但局域网仍可用；状态与控制正常，不重新登录"
+                )
+            return
+
+        # 两条通道都不可用：只有 LAN 与云端会话同时连续失败到阈值才修复
+        if self._auth_repair_needed():
+            self._attempt_session_repair()
+
+    def _auth_repair_needed(self) -> bool:
+        return (
+            self._lan_fail_rounds >= REPAIR_LAN_FAIL_ROUNDS
+            and self._cloud_down_rounds >= REPAIR_CLOUD_FAIL_ROUNDS
+        )
+
+    def _reset_daily_counter_if_needed(self) -> None:
+        today = time.strftime("%Y-%m-%d")
+        if self._auth_daily_date != today:
+            self._auth_daily_date = today
+            self._auth_daily_count = 0
+
+    def _enter_cooldown(self, reason: str) -> None:
+        """瞬时失败：按 2h → 6h → 12h 阶梯退避（到达末级后保持 12h）。"""
+        step = min(self._cooldown_step, len(COOLDOWN_STEPS_SECONDS) - 1)
+        wait = COOLDOWN_STEPS_SECONDS[step]
+        self._cooldown_step = min(step + 1, len(COOLDOWN_STEPS_SECONDS) - 1)
+        self._next_auth_retry_at = time.time() + wait
+        self._auth_state = "COOLDOWN"
+        _LOGGER.debug(
+            "会话修复暂停（%s），%d 秒后允许重试",
+            reason, int(wait),
+        )
+
+    def _enter_reauth_required(self, reason: Any) -> None:
+        """凭据连续失效：停止自动重登，等用户改密后重载。"""
+        if self._auth_state == "REAUTH_REQUIRED":
+            return
+        self._auth_state = "REAUTH_REQUIRED"
+        _LOGGER.error(
+            "登录凭据持续无效（%s）。请检查账号密码，修正后重载本集成；"
+            "在此之前不会再尝试自动登录。", reason,
+        )
+
+    def _attempt_session_repair(self) -> None:
+        """全断后的唯一修复入口：登录 + 设备列表确认，带节流与退避。"""
+        if not AUTO_RELOGIN_ENABLED or self._auth_state == "REAUTH_REQUIRED":
+            return
         now = time.time()
+        if now < self._next_auth_retry_at:      # COOLDOWN 未到期
+            return
+        if now - self._auth_last_login_at < RELOGIN_MIN_INTERVAL_SECONDS:
+            return                              # 2h 最小间隔（不计失败、不登录）
+        self._reset_daily_counter_if_needed()
+        if self._auth_daily_count >= RELOGIN_DAILY_LIMIT:
+            # 当日上限：次日零点再允许（本轮只置时间，避免每轮重复日志）
+            if self._next_auth_retry_at < now:
+                self._next_auth_retry_at = _next_midnight(now)
+            return
+
+        previous = self._auth_state
+        self._auth_state = "RECOVERING"
+        try:
+            ok = self._protocol.relogin()
+        except CredentialError as err:
+            self._credential_fail_streak += 1
+            if self._credential_fail_streak >= CREDENTIAL_FAIL_THRESHOLD:
+                self._enter_reauth_required(err)
+            else:
+                self._enter_cooldown(f"凭据错误 {self._credential_fail_streak} 次")
+            return
+        except Exception as err:  # noqa: BLE001 - 瞬时故障统一退避
+            self._credential_fail_streak = 0
+            _LOGGER.debug("会话修复失败（瞬时故障）：%s", err)
+            self._enter_cooldown("登录失败")
+            return
+
+        if not ok:
+            # 60s 并发节流 / 协议已关闭：既不算失败也不改计数
+            self._auth_state = previous
+            return
+
+        self._credential_fail_streak = 0
+        self._cooldown_step = 0
+        self._auth_last_login_at = time.time()
+        self._auth_daily_count += 1
+        self._next_auth_retry_at = 0.0
+
+        # 登录后再拉一次设备列表确认会话真的可用；仍失败则按瞬时故障进入 COOLDOWN
+        try:
+            self._protocol.get_devices()
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("重新登录后设备列表仍失败：%s", err)
+            self._enter_cooldown("登录后设备列表失败")
+            return
+
+        self._http_ok = True
+        self._http_checked_at = time.time()
+        self._lan_fail_rounds = 0
+        self._cloud_down_rounds = 0
+        self._auth_state = "OK"
+        _LOGGER.info("会话已恢复（重新登录成功）")
+
+    def _apply_device_list(self, raw_list: List[Dict[str, Any]]) -> None:
+        """只更新设备元数据与云端快照，不改 `online`（可用性由查询结果决定）。"""
+        did_to_device = {dev.did: dev for dev in self._devices}
         for raw in raw_list:
             did = str(raw.get("did") or "")
             dev = did_to_device.get(did)
@@ -1887,22 +2276,9 @@ class WanjialeApi:
             dev.name = str(raw.get("name") or dev.name)
             dev.model_id = str(raw.get("modelId") or dev.model_id)
             dev.ver = str(raw.get("ver") or dev.ver)
+            dev.cloud_online = bool(raw.get("online"))
             if not dev.lan_pin and raw.get("lanPin"):
                 dev.lan_pin = str(raw["lanPin"])
-
-            cloud_online = bool(raw.get("online"))
-            if cloud_online:
-                dev.online = True
-            elif dev.is_lan_available():
-                # 云端报离线但设备有局域网参数时，以「最近一次成功交互」为判据，
-                # 避免云端状态推送延迟导致设备被误判为离线。
-                if dev._last_seen_online and now - dev._last_seen_online >= 120:
-                    dev.online = False
-                    _LOGGER.info("设备 %s 超过 120s 未确认在线，标记离线", dev.name)
-                else:
-                    dev.online = True
-            else:
-                dev.online = False
             dev.refresh()
 
     # ------------------------------------------------------------------
@@ -1920,8 +2296,7 @@ class WanjialeApi:
 
     def close(self) -> None:
         _LOGGER.debug("关闭云端长连接与局域网连接")
-        self.close_server()
-        self.close_local()
+        self._protocol.close()
 
     def reconnect(self) -> bool:
         _LOGGER.debug("重连长连接")

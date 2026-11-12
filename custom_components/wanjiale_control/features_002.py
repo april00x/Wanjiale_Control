@@ -5,9 +5,9 @@
   - `parse_state(state, fids, profile)`：按 `profile["points"]`（机型级点位）解析统一语义字段；
   - `encode_value(action, **params)`：语义动作 → `{dpid: 绝对字符串}`。
 
-本文件不含任何全局 dpid 常量：002 的同一 dpid 在不同方言/机型下语义互斥
-（如 108 在 B 标准是卫浴设定温度、在 B3 是故障码），点位一律从 `profile["points"]` 取。
-实现只允许按 `points.dialect + points.*` 分支，禁止「按协议版本统一」的跨机型推断。
+本文件不含任何全局 dpid 常量：002 的同一 dpid 在不同协议变体/机型下语义互斥
+（如 108 在 B 类标准组是卫浴设定温度、在 B3 是故障码），点位一律从 `profile["points"]` 取。
+实现只允许按 `points.protocol_variant + points.*` 分支，禁止「按协议版本统一」的跨机型推断。
 
 `probe_dvids` 一律留空：002 的功能位由能力表 `flags` 决定，不能用 dpid 并集探测。
 """
@@ -110,9 +110,9 @@ def _mask(spec: Dict[str, Any], key: str) -> Optional[int]:
 
 
 def _normalize_fault(raw: Any, normal: Any) -> Tuple[Optional[int], Optional[int]]:
-    """把各方言的故障值归一化：正常 → 0，异常 → 非 0。
+    """把各协议变体的故障值归一化：正常 → 0，异常 → 非 0。
 
-    A 线的 0 与 B3 的 0/255 可能同时是「正常哨兵」和「真实故障码」，统一挪到
+    A 类的 0 与 B3 的 0/255 可能同时是「正常哨兵」和「真实故障码」，统一挪到
     256+ 的保留段，避免与 `plugin.fault_none=(0,)` 冲突。
     """
     value = _int(raw)
@@ -144,7 +144,7 @@ def _fault_title(model_key: Optional[str], fault_id: int) -> Optional[str]:
 
 
 def _parse_windows(value: Any) -> Optional[List[Dict[str, int]]]:
-    """解析 A 线预约列表（dpid 6/270 的 JSON 数组字符串）为 [{"s":分,"e":分}]。"""
+    """解析 A 类预约列表（dpid 6/270 的 JSON 数组字符串）为 [{"s":分,"e":分}]。"""
     data = value
     if isinstance(data, str):
         text = data.strip()
@@ -184,7 +184,7 @@ def _emit_schedule_groups(
     prefix: str,
     sched: Dict[str, Any],
 ) -> None:
-    """输出预约组回读值：B/C 数组点位直读，A 线从 list 的 JSON 拆组。"""
+    """输出预约组回读值：B 类/C 类数组点位直读，A 类从 list 的 JSON 拆组。"""
     arrays = False
     for field in ("start", "end", "enable", "temp"):
         values = sched.get(field)
@@ -322,8 +322,8 @@ def parse_state(
     if value is not None:
         out["heat_current_temp"] = value
 
-    # ---- A 线 cmd4 复合包所需：卫浴模式 / 水流 / 水量 ----
-    if pts.get("dialect") == "A":
+    # ---- A 类 cmd4 复合包所需：卫浴模式 / 水流 / 水量 ----
+    if pts.get("protocol_variant") == "A":
         dhw_set = _group(pts, "dhw_set")
         for out_key, key in (
             ("dhw_mode", "mode_dpid"),
@@ -352,13 +352,13 @@ def parse_state(
             else:
                 out["heating_on"] = raw != 0
     elif season.get("dpid") not in (None, ""):
-        # B 标准 / 原生 C / B2c：冬夏模式（winter=0 视为供暖开）
+        # B 类标准组 / C 类 / B2c：冬夏模式（winter=0 视为供暖开）
         raw = _value(state, season)
         if raw is not None:
             winter = _int(season.get("winter"))
             out["heating_on"] = raw == (0 if winter is None else winter)
 
-    # ---- 燃烧中（B 标准 103&32） ----
+    # ---- 燃烧中（B 类标准组 103&32） ----
     combustion = _group(pts, "combustion")
     combustion_bit = _mask(combustion, "bit")
     raw = _value(state, combustion)
@@ -379,7 +379,7 @@ def parse_state(
                 if bit is not None:
                     out[out_key] = bool(heating_raw & bit)
 
-    # ---- 点动：A 线 68&1（必须按位判，68 可能带其它位）/ B3 117==1 ----
+    # ---- 点动：A 类 68&1（必须按位判，68 可能带其它位）/ B3 117==1 ----
     jog = _group(pts, "jog")
     raw = _value(state, jog)
     if raw is not None:
@@ -401,7 +401,7 @@ def parse_state(
         shift = _int(env_offset.get("shift")) or 0
         out["env_offset"] = (raw & mask) >> shift if mask is not None else raw
 
-    # ---- ECO 读侧（仅 A 线有 eco_bit；B3 的 119&64 不输出） ----
+    # ---- ECO 读侧（仅 A 类有 eco_bit；B3 的 119&64 不输出） ----
     eco_bit = _mask(heating, "eco_bit")
     if eco_bit is not None:
         eco_raw = _value(state, heating)
@@ -426,7 +426,7 @@ def parse_state(
         raw = _value(state, status)
         if raw is not None:
             out["heating_running"] = bool(raw & heating_bit)
-    elif pts.get("dialect") == "B3" and "heating_on" in out:
+    elif pts.get("protocol_variant") == "B3" and "heating_on" in out:
         # B3 的 119 既是供暖功能开，也是运行状态（协议无独立运行位）
         out["heating_running"] = out["heating_on"]
 
@@ -455,8 +455,8 @@ def parse_state(
     value = _value(state, emitter_pt)
     if value is not None:
         out["emitter"] = value
-    elif pts.get("dialect") == "A":
-        # A 线没有独立末端点：87 已上报时实读 bit5；未上报时维持能力表常量
+    elif pts.get("protocol_variant") == "A":
+        # A 类没有独立末端点：87 已上报时实读 bit5；未上报时维持能力表常量
         # （启动期量程行为不变）。
         heating_pt = _group(pts, "heating")
         range_bit = _int(heating_pt.get("range_bit"))
@@ -518,8 +518,8 @@ def parse_state(
         raw = _int(state.get(str(total)))
         if raw is not None:
             out["preheat_on"] = raw == 1
-    elif pts.get("dialect") == "A":
-        # A 线洗浴预约总开关用 60&16（预约/夜浴位）
+    elif pts.get("protocol_variant") == "A":
+        # A 类洗浴预约总开关用 60&16（预约/夜浴位）
         instant = _group(pts, "instant")
         dpid = _dpid_of(instant)
         if dpid and dpid in state:
@@ -527,7 +527,7 @@ def parse_state(
             if raw is not None:
                 out["preheat_on"] = bool(raw & 16)
 
-    # ---- 预约组回读（B/C 数组直读；A 线从 list 的 JSON 拆组） ----
+    # ---- 预约组回读（B 类/C 类数组直读；A 类从 list 的 JSON 拆组） ----
     _emit_schedule_groups(out, state, "heat_schedule", heat_schedule)
     _emit_schedule_groups(out, state, "dhw_schedule", dhw_schedule)
     shared = _int(heat_schedule.get("shared_temp"))
@@ -652,7 +652,7 @@ def parse_state(
     raw = _value(state, _group(pts, "child_lock"))
     if raw is not None:
         out["child_lock"] = raw == 1
-    if pts.get("dialect") == "B5":
+    if pts.get("protocol_variant") == "B5":
         # 周计划只读摘要：dpid 是动态计算的，不在机型点位表里
         weekly = _weekly_plan(state)
         out["weekly_plan_count"] = len(weekly)
@@ -671,7 +671,7 @@ def parse_state(
     if raw is not None:
         out["online"] = raw != 0
 
-    # ---- 多端操作权优先位（仅 A 线有点位） ----
+    # ---- 多端操作权优先位（仅 A 类有点位） ----
     raw = _value(state, _group(pts, "priority"))
     if raw is not None:
         out["priority"] = raw
@@ -708,7 +708,7 @@ def _dpid(item: Dict[str, Any], key: str = "dpid") -> str:
 
 
 def _master_dpid(item: Dict[str, Any]) -> str:
-    """预约总开关 dpid：B/C 是 `total`，A 线是 `master_cmd`。"""
+    """预约总开关 dpid：B 类/C 类是 `total`，A 类是 `master_cmd`。"""
     total = item.get("total")
     if total not in (None, ""):
         return str(total)
@@ -717,8 +717,8 @@ def _master_dpid(item: Dict[str, Any]) -> str:
     raise ValueError("该机型未配置预约总开关点位")
 
 
-def _dialect(points: Dict[str, Any]) -> str:
-    return str(points.get("dialect") or "")
+def _protocol_variant(points: Dict[str, Any]) -> str:
+    return str(points.get("protocol_variant") or "")
 
 
 def _byte(value: Any) -> int:
@@ -729,19 +729,19 @@ def _byte(value: Any) -> int:
 
 
 def _pack_toggle(byte3: Any, subtype: int = 2) -> int:
-    """A 线复合包：byte3 为开关值/档位，byte2 为子类型，低 16 位 0xFFFF 表示不修改。"""
+    """A 类复合包：byte3 为开关值/档位，byte2 为子类型，低 16 位 0xFFFF 表示不修改。"""
     return (int(byte3) << 24) | (int(subtype) << 16) | 0xFFFF
 
 
 def _cmd_pair(cmd: Any, value: Any) -> Dict[str, str]:
-    """A 线命令字成对报文：dvid1=命令类型，dvid2=32 位复合参数。"""
+    """A 类命令字成对报文：dvid1=命令类型，dvid2=32 位复合参数。"""
     if not isinstance(cmd, dict) or cmd.get("type") in (None, ""):
         raise ValueError("该机型缺少命令字点位")
     return {"1": str(int(cmd["type"])), "2": str(int(value))}
 
 
 def _a_master(cmd: Dict[str, Any], on: bool, temp: Any) -> Dict[str, str]:
-    """A 线预约总开关：部分机型是「on/off + 温度」形态。"""
+    """A 类预约总开关：部分机型是「on/off + 温度」形态。"""
     if cmd.get("with_temp"):
         value = ((1 if on else 0) << 24) | (2 << 16) | (_byte(temp) << 8) | 0xFF
         return _cmd_pair(cmd, value)
@@ -751,13 +751,13 @@ def _a_master(cmd: Dict[str, Any], on: bool, temp: Any) -> Dict[str, str]:
 def encode_value(action: str, **params: Any) -> Dict[str, str]:
     """把语义动作编码成 `{dpid: 绝对字符串}`（不含报文信封）。
 
-    B/C/B2c/B4/B5 一律单点直写；A 线是命令字加 32 位复合包（dvid1/dvid2 成对）。
+    B 类（含 B2c/B4/B5）与 C 类一律单点直写；A 类是命令字加 32 位复合包（dvid1/dvid2 成对）。
     两种形态都只按 `points` 决定，不做跨机型推断。
     """
     points = params.get("points") or {}
     if not isinstance(points, dict) or not points:
         raise ValueError("缺少机型点位表，拒绝下发")
-    dialect = _dialect(points)
+    protocol_variant = _protocol_variant(points)
 
     if action == "power":
         item = _require_group(points, "power")
@@ -770,7 +770,7 @@ def encode_value(action: str, **params: Any) -> Dict[str, str]:
         low = int(item.get("min", 35))
         high = int(item.get("max", 60))
         value = max(low, min(high, int(params["value"])))
-        if dialect == "A":
+        if protocol_variant == "A":
             # {1: cmd4, 2: mode<<24 | temp<<16 | flow<<8 | volume}
             packed = (
                 (_byte(params.get("mode")) << 24)
@@ -790,14 +790,14 @@ def encode_value(action: str, **params: Any) -> Dict[str, str]:
             value = max(min(int(v) for v in lows), value)
         if highs:
             value = min(max(int(v) for v in highs), value)
-        if dialect == "A":
+        if protocol_variant == "A":
             # {1: cmd39, 2: temp<<24 | 0x02FFFF}
             return _cmd_pair(item.get("cmd"), _pack_toggle(value))
         return {_dpid(item): str(value)}
 
     if action == "heating":
         on = bool(params["on"])
-        if dialect == "A":
+        if protocol_variant == "A":
             cmd = (points.get("heating") or {}).get("cmd") or (
                 points.get("season") or {}
             ).get("cmd") or {}
@@ -816,7 +816,7 @@ def encode_value(action: str, **params: Any) -> Dict[str, str]:
         values = item.get("values") or {}
         if values and str(mode) not in values:
             raise ValueError(f"该机型不支持模式取值 {mode}")
-        if dialect == "A":
+        if protocol_variant == "A":
             cmd = item.get("cmd") or {}
             # YJW 的 cmd45 按模式取值覆盖 subtype；其余机型统一用 cmd.subtype
             subtype = (cmd.get("subtype_by_value") or {}).get(str(mode), cmd.get("subtype", 2))
@@ -828,7 +828,7 @@ def encode_value(action: str, **params: Any) -> Dict[str, str]:
         if not isinstance(item, dict) or not item:
             item = _require_group(points, "instant")
         on = bool(params["on"])
-        if dialect == "A":
+        if protocol_variant == "A":
             cmd = item.get("cmd") or {}
             if cmd.get("with_temp"):
                 # on/off<<24 | 2<<16 | 温度<<8 | 255
@@ -839,7 +839,7 @@ def encode_value(action: str, **params: Any) -> Dict[str, str]:
 
     if action == "emitter":
         value = int(params["value"])
-        if dialect == "A":
+        if protocol_variant == "A":
             cmd = _require_group(points, "heating").get("emitter_cmd") or {}
             if cmd.get("type") in (None, ""):
                 raise ValueError("该机型未配置采暖末端命令")
@@ -873,7 +873,7 @@ def encode_value(action: str, **params: Any) -> Dict[str, str]:
         return {_dpid(item): str(value)}
 
     if action == "eco":
-        if dialect != "A":
+        if protocol_variant != "A":
             raise ValueError("该机型不支持 ECO 写入")
         cmd = _require_group(points, "heating").get("eco_cmd") or {}
         if cmd.get("type") in (None, ""):
@@ -890,7 +890,7 @@ def encode_value(action: str, **params: Any) -> Dict[str, str]:
         options = item.get("options") or {}
         if options and str(value) not in options:
             raise ValueError(f"该机型不支持即热时长档位 {value}")
-        if dialect == "A":
+        if protocol_variant == "A":
             # {1: cmd26, 2: 档位<<24 | 2<<16 | 0xFFFF}
             return _cmd_pair(item.get("cmd"), ((value & 0xFF) << 24) | (2 << 16) | 0xFFFF)
         dpid = item.get("dpid")
@@ -908,33 +908,33 @@ def encode_value(action: str, **params: Any) -> Dict[str, str]:
     if action == "jog":
         item = points.get("jog")
         if not isinstance(item, dict) or item.get("writable") is not True:
-            # A 线 68 只有 readonly：同键不同方言，必须由属性拦截
+            # A 类 68 只有 readonly：同键不同协议变体，必须由属性拦截
             raise ValueError("该机型点动状态只读或未配置，拒绝下发")
         return {_dpid(item): "1" if params["on"] else "0"}
 
     if action == "heat_schedule_master":
         item = _require_group(points, "schedule_heat")
-        if dialect == "A":
+        if protocol_variant == "A":
             return _a_master(item.get("master_cmd") or {}, bool(params["on"]), params.get("temp"))
         return {_master_dpid(item): "1" if params["on"] else "0"}
 
     if action == "preheat_master":
         item = _require_group(points, "schedule_dhw")
-        if dialect == "A":
+        if protocol_variant == "A":
             return _a_master(item.get("master_cmd") or {}, bool(params["on"]), params.get("temp"))
         return {_master_dpid(item): "1" if params["on"] else "0"}
 
     if action in ("boost", "ai", "sterilize", "child_lock"):
         item = _require_group(points, action)
         on = bool(params["on"])
-        if dialect == "A" and item.get("cmd"):
+        if protocol_variant == "A" and item.get("cmd"):
             return _cmd_pair(item.get("cmd"), _pack_toggle(1 if on else 0))
         return {_dpid(item): "1" if on else "0"}
 
     if action == "keep_warm":
         item = _require_group(points, "keep_warm")
         minutes = int(params["minutes"])
-        if dialect == "A":
+        if protocol_variant == "A":
             unit = int(item.get("unit_min") or 1)
             return _cmd_pair(item.get("cmd"), _pack_toggle(minutes // unit))
         if item.get("write_rule") == "minutes_to_raw_then_scale":
@@ -955,7 +955,7 @@ def encode_value(action: str, **params: Any) -> Dict[str, str]:
         if isinstance(neutral, dict) and neutral:
             return {_dpid(neutral): str(value)}
         item = _require_group(points, "diff_heat" if kind == "heat" else "diff_dhw")
-        if dialect == "A":
+        if protocol_variant == "A":
             return _cmd_pair(item.get("cmd"), _pack_toggle(value))
         # 偏移只从能力表取，固定用 write_offset
         offset = int(item.get("write_offset") or 0)
@@ -969,8 +969,8 @@ def encode_value(action: str, **params: Any) -> Dict[str, str]:
         if action == "schedule_time":
             field = str(params["field"])
             minutes = int(params["minutes"])
-            if dialect == "A":
-                # A 线一条命令写「同组起止」：start_min<<16 | end_min
+            if protocol_variant == "A":
+                # A 类一条命令写「同组起止」：start_min<<16 | end_min
                 add = sched.get("add")
                 other = params.get("other_minutes")
                 if add in (None, ""):
@@ -1017,7 +1017,7 @@ def encode_value(action: str, **params: Any) -> Dict[str, str]:
         kind = str(params["kind"])
         sched = _require_group(points, f"schedule_{kind}")
         packed = params.get("packed_value")
-        if dialect == "A":
+        if protocol_variant == "A":
             delete_dpid = sched.get("del")
             if delete_dpid in (None, "") or packed is None:
                 raise ValueError("该机型未配置预约删除命令或缺少整组时间")

@@ -10,8 +10,17 @@ CONF_IMEI = "imei"
 
 # 选项（OptionsFlow）
 CONF_ENABLE_CONTROL_RIGHTS = "enable_control_rights"   # 是否启用多端操作权抢占
-CONF_FEATURE_FORCE_ON = "feature_force_on"             # 强制开启的功能（多选）
-CONF_FEATURE_FORCE_OFF = "feature_force_off"           # 强制关闭的功能（多选）
+# 功能覆盖按设备保存：{did: {"on": [功能名...], "off": [功能名...]}}
+CONF_FEATURE_OVERRIDES = "feature_overrides"
+CONF_DEVICE_FORCE_ON = "force_on"                      # 单台设备的强制开启列表
+CONF_DEVICE_FORCE_OFF = "force_off"                    # 单台设备的强制关闭列表
+CONF_DEVICE_DID = "device_did"                         # 选项页当前配置的设备
+CONF_DEVICE_FEATURES = "device_features"               # 选项页「已开启的功能」多选（仅表单字段，不落库）
+# 旧版账号级覆盖（仅用于迁移，读取后从 options 中移除）
+CONF_FEATURE_FORCE_ON = "feature_force_on"
+CONF_FEATURE_FORCE_OFF = "feature_force_off"
+# 一次性动作：勾选后本次重载允许云端新设备加入；不落库（只进内存标记集合）
+CONF_RESCAN_DEVICES = "rescan_devices"
 
 # 轮询间隔（秒）
 DEFAULT_SCAN_INTERVAL = 10

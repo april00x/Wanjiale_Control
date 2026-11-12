@@ -25,6 +25,19 @@
     "keyField": "firm_product_model（如 WJL_002_AJF）",
     "deviceCount": 46,
     "trfExcluded": "TRF 无机型数据，未收录",
+    "protocolVariants": {
+      "A": "老编号 1~100（命令字 + 32 位复合包）",
+      "B1": "新编号 101+（基础）",
+      "B2a": "新编号 101+（增强，无 152）",
+      "B2b": "新编号 101+（增强，有 152）",
+      "B2c": "新编号 101+（偏移型）",
+      "B3": "新编号 101+（翻译型）",
+      "B4": "新编号 101+（周计划型）",
+      "B5": "新编号 101+（简化型）",
+      "C": "厂商原生配置模板"
+    },
+    "glossary": "A 类 = 老编号（dpid 1~100）；B 类 = 新编号（dpid 101+），含 B1/B2a/B2b/B2c/B3/B4/B5；B 标准组 = B1/B2a/B2b/B2c（21 机型）；C 类 = 厂商原生配置模板。",
+    "notesPurpose": "notes 仅供维护者阅读，运行时不读取；术语见 glossary。",
     "flagOrder": [
       "开关机",
       "卫浴温度",
@@ -47,23 +60,23 @@
     ],
     "notes": [
       "B5（FFS）：106=童锁、107=模式可写（select 0/2/3）、102=当前温度、104=实际温度；无 fault 键。",
-      "B5 的点位以 102~107 为准，readDpids 中其余键是打包模板残留，不采用。",
-      "B2c：116=故障；150 以 keep_warm_readonly 存储（来源 readDpids，assumed），只读并作为保温 sensor，不生成可写 keep_warm；128~132 仅存点位；134~148/153 作为热水预热；109 为共享预约温度。",
-      "供暖量程：B/C 取「散热地暖」成对行（最小=地暖、最大=散热片），未被注释的 30~80 行补散热片上界；A 线只取「供暖」行，无证据时标 assumed。",
-      "A 线预约：单命令增删（洗浴 7/8、供暖 271/272）+ groups=5；回读走 list（6/270，JSON 数组字符串），洗浴主开关 cmd15、供暖主开关 cmd40。",
-      "A 线洗浴预约复用「热水预热」功能位（App 文案是「洗浴预约」），实体名用「洗浴预约n」；README 需说明两者是同一功能位。",
-      "keep_warm.zero_meaning：B2=instant_once（0=即热一次）、A=cycle_once（0=循环一次）、B3/HQJ=unknown；写 0 会触发热循环，界面不得显示为「关闭」。",
-      "A 线 87 range_bit 的极性未获协议证据，range_radiator_value=1 且 range_assumed=true。",
-      "A 线模式仅 CDW/FJR/UMN/WGZ/YMQ/YJW 六机型开放；模式回读 dpid=100。",
-      "B3 的 102~106/103 是洗浴预约（洗浴预约设置），不是供暖预约；不生成供暖预约功能位。",
+      "B5 的点位以 102~107 为准，readDpids 中其余键是配置模板的残留项，不采用。",
+      "B2c：116=故障；150 只读保温（keep_warm_readonly，assumed）；128~132 仅存点位；134~148/153 作为热水预热；109 为共享预约温度。",
+      "供暖量程：B 类与 C 类取「散热地暖」成对行（最小=地暖、最大=散热片），未注释的 30~80 行补散热片上界；A 类只取「供暖」行；无证据时标 assumed。",
+      "A 类预约：洗浴用命令 7/8 增删、供暖用命令 271/272 增删，groups=5；回读 6/270 的 JSON 数组字符串；洗浴主开关 cmd15、供暖主开关 cmd40。",
+      "A 类的「洗浴预约」复用「热水预热」功能位（App 文案为「洗浴预约」），实体名用「洗浴预约n」；README 需说明两者是同一功能位。",
+      "keep_warm.zero_meaning：B2a/B2b=instant_once（0=即热一次）、A=cycle_once（0=循环一次）、B3/HQJ=unknown；写 0 会触发热循环，界面不得显示为「关闭」。",
+      "A 类 87 的 range_bit（bit5）表示地暖/散热片，极性未获协议证据；range_radiator_value=1，range_assumed=true。",
+      "A 类模式仅 CDW/FJR/UMN/WGZ/YMQ/YJW 六机型开放；模式回读 dpid=100。",
+      "B3 的 102~106/103 是 App「洗浴预约设置」，不是供暖预约；不生成供暖预约功能位。",
       "HQJ 的模式 148 显示文案为 0=自动/1=睡眠/2=在家/3=外出（写入与回读双向确认）；早期按「0 智能/1 节能」解析是 CSS 类名误读，已修订。",
-      "原生 C 的 151 官方字典为「冬季模式 0~1」，另有机型把 151 当 ECO 用；已标 assumed。",
-      "HQJ 的 153~192 是八路温控器，161 是温控器 2 故障点，不生成 B 标准的 in_window。",
-      "PGS/YJW 的 dhw_set.read=27 标 assumed（协议同时把 27 描述为晨浴掩码）；若真机确认 27 不是温度，则这两台不暴露卫浴目标温度。cmd14/cmd15 若需带温度形态，需在 points 回填 with_temp。",
-      "B2 的 keep_warm.map 覆盖 0~7，minutes_to_raw 提供写入反查；JGQ 写入 ×3。",
-      "故障文案以 App 显示文案为准；键为 parse_state 归一化后的值（A 线 0→256）。",
-      "只读补充：燃烧中 103&32 覆盖 B1/B2a/B2b/B2c 21 台 + 原生 C 5 台（原生 C 的 103 来自燃烧状态绑定）；B3 119 的 2/4/8/16 只读位；A 线 68&1 仅 9 台有写入侧证据的机型（readonly，语义 assumed）；浴缸注水完成 24&8 仅 13 台；环境修正 (52&0x70)>>4 仅 A 线 16 台。",
-      "写入实现范围：cmd43 仅 9 台（YJW with_temp=false 只发末端）；cmd38 仅 A 线 7 台（FFY/WLK 的 label=睡眠）；cmd44 仅 FFY/WLK，无读点；cmd26 仅 CBC/CDW，其余 10 台待真机扩面；B3 120 可写（assumed）；118 仅 XQZ；116 洗浴预约总开关仅 XQZ、117 点动 XQZ/RTF。",
+      "C 类的 151 官方字典为「冬季模式 0~1」，另有机型把 151 当 ECO 用；已标 assumed。",
+      "HQJ 的 153~192 是八路温控器，161 是温控器 2 的故障点；不生成 B 类标准组的 in_window。",
+      "PGS/YJW 的 dhw_set.read=27 标 assumed（协议同时把 27 描述为晨浴掩码）；若真机确认 27 不是温度，这两台不暴露卫浴目标温度。cmd14/cmd15 若需带温度形态，需在 points 回填 with_temp。",
+      "B2a/B2b 的 keep_warm.map 覆盖 0~7，minutes_to_raw 提供写入反查；JGQ 写入 ×3。",
+      "故障文案以 App 显示文案为准；键为 parse_state 归一化后的值（A 类 0→256）。",
+      "只读补充：燃烧中 103&32 覆盖 B1/B2a/B2b/B2c 21 台 + C 类 5 台（C 类的 103 来自燃烧状态绑定）；B3 119 的 2/4/8/16 只读位；A 类 68&1 仅 9 台有写入侧证据的机型（readonly，语义 assumed）；浴缸注水完成 24&8 仅 13 台；环境修正 (52&0x70)>>4 仅 A 类 16 台。",
+      "写入实现范围：cmd43 仅 9 台（YJW with_temp=false 只发末端）；cmd38 仅 A 类 7 台（FFY/WLK 的 label=睡眠）；cmd44 仅 FFY/WLK，无读点；cmd26 仅 CBC/CDW，其余 10 台待真机扩面；B3 120 可写（assumed）；118 仅 XQZ；116 洗浴预约总开关仅 XQZ、117 点动 XQZ/RTF。",
       "circulation.options 取自 App 即热时长选择控件（无该控件时兜底 16/17）：16=30 秒、17=1 分钟，其余为分钟值；CDW/CBC/XQZ 均为 16/17/2~9/11~15（没有 10）。"
     ]
   },
@@ -121,7 +134,7 @@
       "modelId": "qdfpqf",
       "family": "B1",
       "form": "h5",
-      "dialect": "B1",
+      "protocol_variant": "B1",
       "dvidCount": 38,
       "flags": "111111000000000000",
       "modes": [
@@ -139,7 +152,7 @@
         }
       ],
       "points": {
-        "dialect": "B1",
+        "protocol_variant": "B1",
         "power": {
           "dpid": 101,
           "on": 1
@@ -253,7 +266,7 @@
       "modelId": "mvykkg",
       "family": "B2b",
       "form": "h5",
-      "dialect": "B2b",
+      "protocol_variant": "B2b",
       "dvidCount": 58,
       "flags": "111111111100000000",
       "modes": [
@@ -279,7 +292,7 @@
         }
       ],
       "points": {
-        "dialect": "B2b",
+        "protocol_variant": "B2b",
         "power": {
           "dpid": 101,
           "on": 1
@@ -467,12 +480,12 @@
       "modelId": "tqmhwd",
       "family": "A",
       "form": "h5",
-      "dialect": "A",
+      "protocol_variant": "A",
       "dvidCount": 43,
       "flags": "111101111100001010",
       "modes": [],
       "points": {
-        "dialect": "A",
+        "protocol_variant": "A",
         "power": {
           "dpid": 4,
           "on": 1
@@ -669,12 +682,12 @@
       "modelId": "mfdmrt",
       "family": "A",
       "form": "h5",
-      "dialect": "A",
+      "protocol_variant": "A",
       "dvidCount": 42,
       "flags": "111100111100100110",
       "modes": [],
       "points": {
-        "dialect": "A",
+        "protocol_variant": "A",
         "power": {
           "dpid": 4,
           "on": 1
@@ -865,7 +878,7 @@
       "modelId": "wwbjwg",
       "family": "A",
       "form": "h5",
-      "dialect": "A",
+      "protocol_variant": "A",
       "dvidCount": 43,
       "flags": "111111111111000000",
       "modes": [
@@ -887,7 +900,7 @@
         }
       ],
       "points": {
-        "dialect": "A",
+        "protocol_variant": "A",
         "power": {
           "dpid": 4,
           "on": 1
@@ -1123,7 +1136,7 @@
       "modelId": "cztupq",
       "family": "B2b",
       "form": "h5",
-      "dialect": "B2b",
+      "protocol_variant": "B2b",
       "dvidCount": 58,
       "flags": "111111111100000000",
       "modes": [
@@ -1149,7 +1162,7 @@
         }
       ],
       "points": {
-        "dialect": "B2b",
+        "protocol_variant": "B2b",
         "power": {
           "dpid": 101,
           "on": 1
@@ -1337,7 +1350,7 @@
       "modelId": "gvjtpy",
       "family": "C",
       "form": "native",
-      "dialect": "C",
+      "protocol_variant": "C",
       "dvidCount": 42,
       "flags": "111111000100000000",
       "modes": [
@@ -1351,7 +1364,7 @@
         }
       ],
       "points": {
-        "dialect": "C",
+        "protocol_variant": "C",
         "power": {
           "dpid": 101,
           "on": 1
@@ -1467,7 +1480,7 @@
       "modelId": "hfgyda",
       "family": "B1",
       "form": "h5",
-      "dialect": "B1",
+      "protocol_variant": "B1",
       "dvidCount": 37,
       "flags": "111111000000000000",
       "modes": [
@@ -1485,7 +1498,7 @@
         }
       ],
       "points": {
-        "dialect": "B1",
+        "protocol_variant": "B1",
         "power": {
           "dpid": 101,
           "on": 1
@@ -1595,7 +1608,7 @@
       "modelId": "qcvqoq",
       "family": "B1",
       "form": "h5",
-      "dialect": "B1",
+      "protocol_variant": "B1",
       "dvidCount": 38,
       "flags": "111111000000000000",
       "modes": [
@@ -1613,7 +1626,7 @@
         }
       ],
       "points": {
-        "dialect": "B1",
+        "protocol_variant": "B1",
         "power": {
           "dpid": 101,
           "on": 1
@@ -1727,7 +1740,7 @@
       "modelId": "fsgics",
       "family": "B5",
       "form": "h5",
-      "dialect": "B5",
+      "protocol_variant": "B5",
       "dvidCount": 22,
       "flags": "110000000000000001",
       "modes": [
@@ -1745,7 +1758,7 @@
         }
       ],
       "points": {
-        "dialect": "B5",
+        "protocol_variant": "B5",
         "power": {
           "dpid": 101,
           "on": 1
@@ -1788,12 +1801,12 @@
       "modelId": "vdoqdq",
       "family": "A",
       "form": "h5",
-      "dialect": "A",
+      "protocol_variant": "A",
       "dvidCount": 46,
       "flags": "111101111100100110",
       "modes": [],
       "points": {
-        "dialect": "A",
+        "protocol_variant": "A",
         "power": {
           "dpid": 4,
           "on": 1
@@ -1988,7 +2001,7 @@
       "modelId": "tconay",
       "family": "A",
       "form": "h5",
-      "dialect": "A",
+      "protocol_variant": "A",
       "dvidCount": 38,
       "flags": "111110010101000000",
       "modes": [
@@ -2010,7 +2023,7 @@
         }
       ],
       "points": {
-        "dialect": "A",
+        "protocol_variant": "A",
         "power": {
           "dpid": 4,
           "on": 1
@@ -2158,7 +2171,7 @@
       "modelId": "hzwfrb",
       "family": "B2a",
       "form": "h5",
-      "dialect": "B2a",
+      "protocol_variant": "B2a",
       "dvidCount": 58,
       "flags": "111111101100000000",
       "modes": [
@@ -2184,7 +2197,7 @@
         }
       ],
       "points": {
-        "dialect": "B2a",
+        "protocol_variant": "B2a",
         "power": {
           "dpid": 101,
           "on": 1
@@ -2369,7 +2382,7 @@
       "modelId": "ywzmho",
       "family": "B2a",
       "form": "h5",
-      "dialect": "B2a",
+      "protocol_variant": "B2a",
       "dvidCount": 58,
       "flags": "111111101100000000",
       "modes": [
@@ -2395,7 +2408,7 @@
         }
       ],
       "points": {
-        "dialect": "B2a",
+        "protocol_variant": "B2a",
         "power": {
           "dpid": 101,
           "on": 1
@@ -2580,7 +2593,7 @@
       "modelId": "qcnmrt",
       "family": "B4",
       "form": "h5",
-      "dialect": "B4",
+      "protocol_variant": "B4",
       "dvidCount": 113,
       "flags": "111111111100100000",
       "modes": [
@@ -2602,7 +2615,7 @@
         }
       ],
       "points": {
-        "dialect": "B4",
+        "protocol_variant": "B4",
         "power": {
           "dpid": 101,
           "on": 1
@@ -2820,7 +2833,7 @@
       "modelId": "kqpvrg",
       "family": "B1",
       "form": "h5",
-      "dialect": "B1",
+      "protocol_variant": "B1",
       "dvidCount": 38,
       "flags": "111111000000000000",
       "modes": [
@@ -2834,7 +2847,7 @@
         }
       ],
       "points": {
-        "dialect": "B1",
+        "protocol_variant": "B1",
         "power": {
           "dpid": 101,
           "on": 1
@@ -2947,7 +2960,7 @@
       "modelId": "kytmfk",
       "family": "C",
       "form": "native",
-      "dialect": "C",
+      "protocol_variant": "C",
       "dvidCount": 42,
       "flags": "111111000100000000",
       "modes": [
@@ -2961,7 +2974,7 @@
         }
       ],
       "points": {
-        "dialect": "C",
+        "protocol_variant": "C",
         "power": {
           "dpid": 101,
           "on": 1
@@ -3077,7 +3090,7 @@
       "modelId": "hemtcc",
       "family": "B2b",
       "form": "h5",
-      "dialect": "B2b",
+      "protocol_variant": "B2b",
       "dvidCount": 58,
       "flags": "111111111100000000",
       "modes": [
@@ -3103,7 +3116,7 @@
         }
       ],
       "points": {
-        "dialect": "B2b",
+        "protocol_variant": "B2b",
         "power": {
           "dpid": 101,
           "on": 1
@@ -3291,7 +3304,7 @@
       "modelId": "beqkaw",
       "family": "B2c",
       "form": "h5",
-      "dialect": "B2c",
+      "protocol_variant": "B2c",
       "dvidCount": 57,
       "flags": "111111110100000000",
       "modes": [
@@ -3317,7 +3330,7 @@
         }
       ],
       "points": {
-        "dialect": "B2c",
+        "protocol_variant": "B2c",
         "power": {
           "dpid": 101,
           "on": 1
@@ -3456,7 +3469,7 @@
       "modelId": "pglhcc",
       "family": "C",
       "form": "native",
-      "dialect": "C",
+      "protocol_variant": "C",
       "dvidCount": 42,
       "flags": "111111000100000000",
       "modes": [
@@ -3470,7 +3483,7 @@
         }
       ],
       "points": {
-        "dialect": "C",
+        "protocol_variant": "C",
         "power": {
           "dpid": 101,
           "on": 1
@@ -3586,7 +3599,7 @@
       "modelId": "mxvvua",
       "family": "C",
       "form": "native",
-      "dialect": "C",
+      "protocol_variant": "C",
       "dvidCount": 42,
       "flags": "111111000100000000",
       "modes": [
@@ -3600,7 +3613,7 @@
         }
       ],
       "points": {
-        "dialect": "C",
+        "protocol_variant": "C",
         "power": {
           "dpid": 101,
           "on": 1
@@ -3716,7 +3729,7 @@
       "modelId": "xerxpj",
       "family": "B1",
       "form": "h5",
-      "dialect": "B1",
+      "protocol_variant": "B1",
       "dvidCount": 38,
       "flags": "111111000000000000",
       "modes": [
@@ -3730,7 +3743,7 @@
         }
       ],
       "points": {
-        "dialect": "B1",
+        "protocol_variant": "B1",
         "power": {
           "dpid": 101,
           "on": 1
@@ -3843,12 +3856,12 @@
       "modelId": "kkgfwq",
       "family": "A",
       "form": "h5",
-      "dialect": "A",
+      "protocol_variant": "A",
       "dvidCount": 43,
       "flags": "111101111100001010",
       "modes": [],
       "points": {
-        "dialect": "A",
+        "protocol_variant": "A",
         "power": {
           "dpid": 4,
           "on": 1
@@ -4045,7 +4058,7 @@
       "modelId": "imaczx",
       "family": "B2c",
       "form": "h5",
-      "dialect": "B2c",
+      "protocol_variant": "B2c",
       "dvidCount": 57,
       "flags": "111111110100000000",
       "modes": [
@@ -4071,7 +4084,7 @@
         }
       ],
       "points": {
-        "dialect": "B2c",
+        "protocol_variant": "B2c",
         "power": {
           "dpid": 101,
           "on": 1
@@ -4210,7 +4223,7 @@
       "modelId": "qvnltn",
       "family": "B2a",
       "form": "h5",
-      "dialect": "B2a",
+      "protocol_variant": "B2a",
       "dvidCount": 58,
       "flags": "111111101100000000",
       "modes": [
@@ -4236,7 +4249,7 @@
         }
       ],
       "points": {
-        "dialect": "B2a",
+        "protocol_variant": "B2a",
         "power": {
           "dpid": 101,
           "on": 1
@@ -4421,7 +4434,7 @@
       "modelId": "svhftb",
       "family": "B2b",
       "form": "h5",
-      "dialect": "B2b",
+      "protocol_variant": "B2b",
       "dvidCount": 58,
       "flags": "111111111100000000",
       "modes": [
@@ -4439,7 +4452,7 @@
         }
       ],
       "points": {
-        "dialect": "B2b",
+        "protocol_variant": "B2b",
         "power": {
           "dpid": 101,
           "on": 1
@@ -4625,12 +4638,12 @@
       "modelId": "avmoqe",
       "family": "A",
       "form": "h5",
-      "dialect": "A",
+      "protocol_variant": "A",
       "dvidCount": 42,
       "flags": "111100011100110100",
       "modes": [],
       "points": {
-        "dialect": "A",
+        "protocol_variant": "A",
         "power": {
           "dpid": 4,
           "on": 1
@@ -4809,7 +4822,7 @@
       "modelId": "fdtzgz",
       "family": "B1",
       "form": "h5",
-      "dialect": "B1",
+      "protocol_variant": "B1",
       "dvidCount": 38,
       "flags": "111111000000000000",
       "modes": [
@@ -4823,7 +4836,7 @@
         }
       ],
       "points": {
-        "dialect": "B1",
+        "protocol_variant": "B1",
         "power": {
           "dpid": 101,
           "on": 1
@@ -4936,12 +4949,12 @@
       "modelId": "hthiiz",
       "family": "A",
       "form": "h5",
-      "dialect": "A",
+      "protocol_variant": "A",
       "dvidCount": 40,
       "flags": "111101110101000000",
       "modes": [],
       "points": {
-        "dialect": "A",
+        "protocol_variant": "A",
         "power": {
           "dpid": 4,
           "on": 1
@@ -5087,7 +5100,7 @@
       "modelId": "ebxugz",
       "family": "B1",
       "form": "h5",
-      "dialect": "B1",
+      "protocol_variant": "B1",
       "dvidCount": 38,
       "flags": "111111000000000000",
       "modes": [
@@ -5101,7 +5114,7 @@
         }
       ],
       "points": {
-        "dialect": "B1",
+        "protocol_variant": "B1",
         "power": {
           "dpid": 101,
           "on": 1
@@ -5214,12 +5227,12 @@
       "modelId": "dyicfr",
       "family": "A",
       "form": "h5",
-      "dialect": "A",
+      "protocol_variant": "A",
       "dvidCount": 40,
       "flags": "111101110101000000",
       "modes": [],
       "points": {
-        "dialect": "A",
+        "protocol_variant": "A",
         "power": {
           "dpid": 4,
           "on": 1
@@ -5365,7 +5378,7 @@
       "modelId": "oscuqn",
       "family": "B3",
       "form": "h5",
-      "dialect": "B3",
+      "protocol_variant": "B3",
       "dvidCount": 39,
       "flags": "111110011011000000",
       "modes": [
@@ -5387,7 +5400,7 @@
         }
       ],
       "points": {
-        "dialect": "B3",
+        "protocol_variant": "B3",
         "power": {
           "dpid": 101,
           "on": 1
@@ -5495,7 +5508,7 @@
       "modelId": "tfeueb",
       "family": "B2a",
       "form": "h5",
-      "dialect": "B2a",
+      "protocol_variant": "B2a",
       "dvidCount": 58,
       "flags": "111111101100000000",
       "modes": [
@@ -5521,7 +5534,7 @@
         }
       ],
       "points": {
-        "dialect": "B2a",
+        "protocol_variant": "B2a",
         "power": {
           "dpid": 101,
           "on": 1
@@ -5706,7 +5719,7 @@
       "modelId": "jepxap",
       "family": "B2a",
       "form": "h5",
-      "dialect": "B2a",
+      "protocol_variant": "B2a",
       "dvidCount": 58,
       "flags": "111111101100000000",
       "modes": [
@@ -5732,7 +5745,7 @@
         }
       ],
       "points": {
-        "dialect": "B2a",
+        "protocol_variant": "B2a",
         "power": {
           "dpid": 101,
           "on": 1
@@ -5917,7 +5930,7 @@
       "modelId": "dhkszf",
       "family": "A",
       "form": "h5",
-      "dialect": "A",
+      "protocol_variant": "A",
       "dvidCount": 41,
       "flags": "111111111111000000",
       "modes": [
@@ -5939,7 +5952,7 @@
         }
       ],
       "points": {
-        "dialect": "A",
+        "protocol_variant": "A",
         "power": {
           "dpid": 4,
           "on": 1
@@ -6145,7 +6158,7 @@
       "modelId": "mgnykn",
       "family": "B2c",
       "form": "h5",
-      "dialect": "B2c",
+      "protocol_variant": "B2c",
       "dvidCount": 53,
       "flags": "111111110100000000",
       "modes": [
@@ -6171,7 +6184,7 @@
         }
       ],
       "points": {
-        "dialect": "B2c",
+        "protocol_variant": "B2c",
         "power": {
           "dpid": 101,
           "on": 1
@@ -6311,7 +6324,7 @@
       "modelId": "avxzzs",
       "family": "B1",
       "form": "h5",
-      "dialect": "B1",
+      "protocol_variant": "B1",
       "dvidCount": 38,
       "flags": "111111000000000000",
       "modes": [
@@ -6325,7 +6338,7 @@
         }
       ],
       "points": {
-        "dialect": "B1",
+        "protocol_variant": "B1",
         "power": {
           "dpid": 101,
           "on": 1
@@ -6438,7 +6451,7 @@
       "modelId": "bzpnkk",
       "family": "B2a",
       "form": "h5",
-      "dialect": "B2a",
+      "protocol_variant": "B2a",
       "dvidCount": 58,
       "flags": "111111101100000000",
       "modes": [
@@ -6464,7 +6477,7 @@
         }
       ],
       "points": {
-        "dialect": "B2a",
+        "protocol_variant": "B2a",
         "power": {
           "dpid": 101,
           "on": 1
@@ -6649,7 +6662,7 @@
       "modelId": "vxruwn",
       "family": "A",
       "form": "h5",
-      "dialect": "A",
+      "protocol_variant": "A",
       "dvidCount": 43,
       "flags": "111111111111000000",
       "modes": [
@@ -6671,7 +6684,7 @@
         }
       ],
       "points": {
-        "dialect": "A",
+        "protocol_variant": "A",
         "power": {
           "dpid": 4,
           "on": 1
@@ -6884,12 +6897,12 @@
       "modelId": "wfbbog",
       "family": "A",
       "form": "h5",
-      "dialect": "A",
+      "protocol_variant": "A",
       "dvidCount": 46,
       "flags": "111101111100100110",
       "modes": [],
       "points": {
-        "dialect": "A",
+        "protocol_variant": "A",
         "power": {
           "dpid": 4,
           "on": 1
@@ -7084,7 +7097,7 @@
       "modelId": "xayjvc",
       "family": "B3",
       "form": "h5",
-      "dialect": "B3",
+      "protocol_variant": "B3",
       "dvidCount": 43,
       "flags": "111110011011000000",
       "modes": [
@@ -7106,7 +7119,7 @@
         }
       ],
       "points": {
-        "dialect": "B3",
+        "protocol_variant": "B3",
         "power": {
           "dpid": 101,
           "on": 1
@@ -7241,12 +7254,12 @@
       "modelId": "xgbvwl",
       "family": "A",
       "form": "h5",
-      "dialect": "A",
+      "protocol_variant": "A",
       "dvidCount": 40,
       "flags": "111101110101000000",
       "modes": [],
       "points": {
-        "dialect": "A",
+        "protocol_variant": "A",
         "power": {
           "dpid": 4,
           "on": 1
@@ -7392,7 +7405,7 @@
       "modelId": "llaqgf",
       "family": "A",
       "form": "h5",
-      "dialect": "A",
+      "protocol_variant": "A",
       "dvidCount": 44,
       "flags": "111110111100110110",
       "modes": [
@@ -7414,7 +7427,7 @@
         }
       ],
       "points": {
-        "dialect": "A",
+        "protocol_variant": "A",
         "power": {
           "dpid": 4,
           "on": 1
@@ -7641,7 +7654,7 @@
       "modelId": "eqffob",
       "family": "A",
       "form": "h5",
-      "dialect": "A",
+      "protocol_variant": "A",
       "dvidCount": 43,
       "flags": "111111111111000000",
       "modes": [
@@ -7663,7 +7676,7 @@
         }
       ],
       "points": {
-        "dialect": "A",
+        "protocol_variant": "A",
         "power": {
           "dpid": 4,
           "on": 1
@@ -7876,12 +7889,12 @@
       "modelId": "yunheg",
       "family": "A",
       "form": "h5",
-      "dialect": "A",
+      "protocol_variant": "A",
       "dvidCount": 43,
       "flags": "111101111100001010",
       "modes": [],
       "points": {
-        "dialect": "A",
+        "protocol_variant": "A",
         "power": {
           "dpid": 4,
           "on": 1
@@ -8078,7 +8091,7 @@
       "modelId": "oqdqnt",
       "family": "C",
       "form": "native",
-      "dialect": "C",
+      "protocol_variant": "C",
       "dvidCount": 42,
       "flags": "111111000100000000",
       "modes": [
@@ -8092,7 +8105,7 @@
         }
       ],
       "points": {
-        "dialect": "C",
+        "protocol_variant": "C",
         "power": {
           "dpid": 101,
           "on": 1

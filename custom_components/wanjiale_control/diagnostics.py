@@ -21,11 +21,16 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceEntry
 from homeassistant.loader import async_get_integration
 
-from .api import WanjialeDevice
+from .api import (
+    AUTO_RELOGIN_ENABLED,
+    DEVICE_LIST_REFRESH_SECONDS,
+    WanjialeDevice,
+)
 from .const import (
+    CONF_DEVICE_FORCE_OFF,
+    CONF_DEVICE_FORCE_ON,
     CONF_ENABLE_CONTROL_RIGHTS,
-    CONF_FEATURE_FORCE_OFF,
-    CONF_FEATURE_FORCE_ON,
+    CONF_FEATURE_OVERRIDES,
     CONF_IMEI,
     CONF_PASSWORD,
     CONF_USERNAME,
@@ -77,8 +82,31 @@ def _mask_host(value: Any) -> str:
     return f"x.x.x.{tail}" if head else "x.x.x.x"
 
 
+def _masked_feature_overrides(options: Dict[str, Any]) -> Dict[str, Any]:
+    """设备级功能覆盖的脱敏视图：did 只留末 4 位（与其它诊断字段同一口径）。"""
+    raw = options.get(CONF_FEATURE_OVERRIDES) or {}
+    if not isinstance(raw, dict):
+        return {}
+    masked: Dict[str, Any] = {}
+    for did, item in raw.items():
+        if not isinstance(item, dict):
+            continue
+        masked[_mask_tail(did)] = {
+            CONF_DEVICE_FORCE_ON: list(item.get(CONF_DEVICE_FORCE_ON) or []),
+            CONF_DEVICE_FORCE_OFF: list(item.get(CONF_DEVICE_FORCE_OFF) or []),
+        }
+    return masked
+
+
 def _device_snapshot(dev: WanjialeDevice, protocol: Optional[Any] = None) -> Dict[str, Any]:
-    """单台设备的诊断快照：元信息 + 能力判定依据 + 原始与解析后状态。"""
+    """单台设备的诊断快照：元信息 + 能力判定依据 + 原始与解析后状态。
+
+    可用性相关字段：
+      - `online`：可用性（= 实体 available），任一通道查询成功即 True；
+      - `cloud_online`：最近一次 HTTP 设备列表里的 online，仅作历史快照对照；
+      - `query_fail_streak`：连续「两条通道都失败」的轮数（达到阈值即转不可用）；
+      - `last_seen_online`：最近一次查询成功的时刻。
+    """
     return {
         "did": _mask_tail(dev.did),
         "name": dev.name,
@@ -89,6 +117,9 @@ def _device_snapshot(dev: WanjialeDevice, protocol: Optional[Any] = None) -> Dic
         "firm": dev.firm,
         "device_version": dev.ver,
         "online": dev.online,
+        "cloud_online": dev.cloud_online,
+        "query_fail_streak": dev._query_fail_streak,
+        "last_seen_online": dev._last_seen_online or None,
         "lan": {
             "available": dev.is_lan_available(),
             # 局域网连接按设备维护：这里看的是这台设备自己的链路
@@ -106,6 +137,35 @@ def _device_snapshot(dev: WanjialeDevice, protocol: Optional[Any] = None) -> Dic
         "points": sorted(dev.points),
         "state": dev.state,
         "parsed": dev.parsed,
+    }
+
+
+def _auth_snapshot(api: Any) -> Dict[str, Any]:
+    """会话/通道健康状态（排障用，不含任何凭据）。
+
+    `state` 为会话状态机：
+      - OK：正常；
+      - DEGRADED：云端会话不可用但局域网仍可用（只标记、不登录）；
+      - RECOVERING：正在重新登录（两通道全断 ≥60s）；
+      - COOLDOWN：瞬时失败，按 2h → 6h → 12h 退避（见 next_retry_at）；
+      - REAUTH_REQUIRED：凭据连续失效，已停止自动重登（需改密后重载）。
+    `http_ok` 为 False 表示设备元数据已过期（10144），HTTP 探针已暂停；
+    该状态不影响实体可用性与控制。
+    """
+    next_retry = getattr(api, "_next_auth_retry_at", 0.0)
+    return {
+        "state": getattr(api, "_auth_state", "unknown"),
+        "http_ok": getattr(api, "_http_ok", None),
+        "http_checked_at": getattr(api, "_http_checked_at", None),
+        "cloud_session_ok": getattr(api, "_cloud_session_ok", None),
+        "lan_ok": getattr(api, "_lan_ok", None),
+        "lan_fail_rounds": getattr(api, "_lan_fail_rounds", 0),
+        "cloud_down_rounds": getattr(api, "_cloud_down_rounds", 0),
+        "daily_logins": getattr(api, "_auth_daily_count", 0),
+        "next_retry_at": next_retry or None,
+        "credential_fail_streak": getattr(api, "_credential_fail_streak", 0),
+        "auto_relogin_enabled": AUTO_RELOGIN_ENABLED,
+        "device_list_interval_seconds": DEVICE_LIST_REFRESH_SECONDS,
     }
 
 
@@ -131,7 +191,11 @@ async def async_get_config_entry_diagnostics(
         "entry": {
             "title": _mask_title(entry.title),
             "data": dict(entry.data),
-            "options": dict(entry.options),
+            # options 里的设备级覆盖以 did 为键，导出前必须同口径脱敏
+            "options": {
+                **entry.options,
+                CONF_FEATURE_OVERRIDES: _masked_feature_overrides(entry.options),
+            },
         },
         "settings": {
             "scan_interval_seconds": DEFAULT_SCAN_INTERVAL,
@@ -139,8 +203,7 @@ async def async_get_config_entry_diagnostics(
             # 那一份（与 async_unload_entry 同源），未初始化时回退核心最小集
             "platforms": list(entry_data.get("platforms") or CORE_PLATFORMS),
             "control_rights_enabled": bool(entry.options.get(CONF_ENABLE_CONTROL_RIGHTS, False)),
-            "feature_force_on": list(entry.options.get(CONF_FEATURE_FORCE_ON) or []),
-            "feature_force_off": list(entry.options.get(CONF_FEATURE_FORCE_OFF) or []),
+            "feature_overrides": _masked_feature_overrides(entry.options),
         },
     }
 
@@ -176,6 +239,8 @@ async def async_get_config_entry_diagnostics(
         },
     }
     diagnostics["devices"] = [_device_snapshot(dev, protocol) for dev in api.devices]
+    # 会话/设备列表链路状态：BLOCKED 时设备列表不再刷新，靠这一块判断原因
+    diagnostics["auth"] = _auth_snapshot(api)
 
     return async_redact_data(diagnostics, TO_REDACT)
 

@@ -1,6 +1,6 @@
 """002 燃气壁挂炉 · 各平台 spec 表（按设备动态生成）。
 
-002 的实体名单本身随机型/方言变（同一 dpid 在不同机型语义互斥），静态表装不下，
+002 的实体名单本身随机型/协议变体变（同一 dpid 在不同机型语义互斥），静态表装不下，
 因此 `PLATFORM_SPECS` 的值全部是 `Callable[[device], Tuple[Spec, ...]]`
 （由核心 `registry._resolve_specs()` 解析）。
 
@@ -52,8 +52,8 @@ def _dpid_of(item: Dict[str, Any]) -> str:
     return ""
 
 
-def _dialect(points: Dict[str, Any]) -> str:
-    return str(points.get("dialect") or "")
+def _protocol_variant(points: Dict[str, Any]) -> str:
+    return str(points.get("protocol_variant") or "")
 
 
 def _heat_bounds(points: Dict[str, Any]) -> Tuple[float, float]:
@@ -71,7 +71,7 @@ def _heat_bounds(points: Dict[str, Any]) -> Tuple[float, float]:
 # ======================================================================
 def sensor_specs(device: Any) -> Tuple[SensorSpec, ...]:
     pts = _points(device)
-    dialect = _dialect(pts)
+    protocol_variant = _protocol_variant(pts)
     specs = []
 
     dpid = _dpid_of(_group(pts, "dhw_current"))
@@ -140,7 +140,7 @@ def sensor_specs(device: Any) -> Tuple[SensorSpec, ...]:
 
     dhw_next = _group(pts, "schedule_dhw").get("next")
     if dhw_next not in (None, ""):
-        name = "下次洗浴预约时间" if dialect == "A" else "下次热水预热时间"
+        name = "下次洗浴预约时间" if protocol_variant == "A" else "下次热水预热时间"
         specs.append(SensorSpec(
             "next_dhw_preheat", name, str(dhw_next), "next_dhw_preheat",
             "mdi:calendar-clock", None, None, None, False, "hhmm",
@@ -180,7 +180,7 @@ def sensor_specs(device: Any) -> Tuple[SensorSpec, ...]:
                 diagnostic=field == "fault",
             ))
 
-    if dialect == "B5":
+    if protocol_variant == "B5":
         # 周计划 dpid 是动态计算的，不在机型点位表里；用当前温度点触发实体创建
         trigger = _dpid_of(_group(pts, "dhw_current")) or "102"
         specs.append(SensorSpec(
@@ -196,7 +196,7 @@ def sensor_specs(device: Any) -> Tuple[SensorSpec, ...]:
 # ======================================================================
 def binary_sensor_specs(device: Any) -> Tuple[BinarySensorSpec, ...]:
     pts = _points(device)
-    dialect = _dialect(pts)
+    protocol_variant = _protocol_variant(pts)
     status = _group(pts, "status")
     heating = _group(pts, "heating")
     heating_state = _group(pts, "heating_state")
@@ -206,7 +206,7 @@ def binary_sensor_specs(device: Any) -> Tuple[BinarySensorSpec, ...]:
         dpid = _dpid_of(heating_state)
         if dpid:
             # B5（FFS）的 105 是「加热状态」，不是供暖运行
-            name = "加热中" if dialect == "B5" else "供暖运行"
+            name = "加热中" if protocol_variant == "B5" else "供暖运行"
             specs.append(BinarySensorSpec(
                 "heating_running", name, dpid, "heating_running",
                 "mdi:radiator", "running",
@@ -218,7 +218,7 @@ def binary_sensor_specs(device: Any) -> Tuple[BinarySensorSpec, ...]:
                 "heating_running", "供暖运行", str(dpid), "heating_running",
                 "mdi:radiator", "running",
             ))
-    elif _dialect(pts) == "B3":
+    elif _protocol_variant(pts) == "B3":
         dpid = _dpid_of(heating)
         if dpid:
             specs.append(BinarySensorSpec(
@@ -246,7 +246,7 @@ def binary_sensor_specs(device: Any) -> Tuple[BinarySensorSpec, ...]:
             "mdi:calendar-check",
         ))
 
-    # 燃烧中（103&32）：仅 B 标准方言有点位
+    # 燃烧中（103&32）：仅 B 类标准组有点位
     combustion = _group(pts, "combustion")
     dpid = _dpid_of(combustion)
     if dpid:
@@ -269,7 +269,7 @@ def binary_sensor_specs(device: Any) -> Tuple[BinarySensorSpec, ...]:
             continue
         specs.append(BinarySensorSpec(key, name, dpid, value_key, icon))
 
-    # 点动状态：仅 A 线只读 jog(68)；B3 的 jog(117, writable) 归 switch
+    # 点动状态：仅 A 类只读 jog(68)；B3 的 jog(117, writable) 归 switch
     jog = _group(pts, "jog")
     dpid = _dpid_of(jog)
     if dpid and not jog.get("writable"):
@@ -291,7 +291,7 @@ def binary_sensor_specs(device: Any) -> Tuple[BinarySensorSpec, ...]:
 # ======================================================================
 def switch_specs(device: Any) -> Tuple[SwitchSpec, ...]:
     pts = _points(device)
-    dialect = _dialect(pts)
+    protocol_variant = _protocol_variant(pts)
     specs = []
 
     instant = _group(pts, "instant_mode") or _group(pts, "instant")
@@ -302,9 +302,9 @@ def switch_specs(device: Any) -> Tuple[SwitchSpec, ...]:
 
     dhw_schedule = _group(pts, "schedule_dhw")
     if dhw_schedule.get("total") is not None or dhw_schedule.get("master_cmd"):
-        if dialect == "A":
+        if protocol_variant == "A":
             name = "洗浴预约"
-        elif dialect == "B4":
+        elif protocol_variant == "B4":
             name = "热水定时总开关"
         else:
             name = "热水预热总开关"
@@ -323,7 +323,7 @@ def switch_specs(device: Any) -> Tuple[SwitchSpec, ...]:
     features = (
         ("增压", "boost", "增压", "mdi:rocket-launch", "set_boost", "boost_on"),
         ("AI", "ai", "AI", "mdi:robot-outline", "set_ai", "ai_on"),
-        ("杀菌", "sterilize", "抑菌" if dialect == "B4" else "杀菌",
+        ("杀菌", "sterilize", "抑菌" if protocol_variant == "B4" else "杀菌",
          "mdi:shield-sun-outline", "set_sterilize", "sterilizing"),
         ("童锁", "child_lock", "童锁", "mdi:lock-outline", "set_child_lock", "child_lock"),
     )
@@ -340,7 +340,7 @@ def switch_specs(device: Any) -> Tuple[SwitchSpec, ...]:
             device_level=True, method_args=("heat", index),
         ))
 
-    dhw_label = "热水定时" if dialect == "B4" else ("洗浴预约" if dialect == "A" else "热水预热")
+    dhw_label = "热水定时" if protocol_variant == "B4" else ("洗浴预约" if protocol_variant == "A" else "热水预热")
     for index, dpid in enumerate(dhw_schedule.get("enable") or [], start=1):
         if dpid in (None, ""):
             continue
@@ -360,7 +360,7 @@ def switch_specs(device: Any) -> Tuple[SwitchSpec, ...]:
             device_level=True, method_args=(index,),
         ))
 
-    # 节能/睡眠（A 线 cmd38）
+    # 节能/睡眠（A 类 cmd38）
     eco_cmd = _group(pts, "heating").get("eco_cmd") or {}
     if eco_cmd:
         specs.append(SwitchSpec(
@@ -382,7 +382,7 @@ def switch_specs(device: Any) -> Tuple[SwitchSpec, ...]:
             "set_wash_master", "wash_schedule_on", False, True,
         ))
 
-    # 点动（仅 B3 117 可写；A 线 jog(68) 没有 writable 键，不会建 switch）
+    # 点动（仅 B3 117 可写；A 类 jog(68) 没有 writable 键，不会建 switch）
     jog = _group(pts, "jog")
     if jog.get("writable") is True:
         specs.append(SwitchSpec(
@@ -476,7 +476,7 @@ def select_specs(device: Any) -> Tuple[SelectSpec, ...]:
             options={0: "关闭", 1: "晨浴", 2: "夜浴", 3: "晨浴+夜浴"},
         ))
 
-    # 末端类型（A 线 cmd43）：option key = 协议值
+    # 末端类型（A 类 cmd43）：option key = 协议值
     emitter_cmd = _group(pts, "heating").get("emitter_cmd") or {}
     if emitter_cmd:
         specs.append(SelectSpec(
@@ -485,7 +485,7 @@ def select_specs(device: Any) -> Tuple[SelectSpec, ...]:
             device_level=True,
         ))
 
-    # 即热时长：A 线 cmd26 / B3 直写 118，档位取自 App 即热时长弹窗
+    # 即热时长：A 类 cmd26 / B3 直写 118，档位取自 App 即热时长弹窗
     circulation = _group(pts, "circulation")
     if circulation.get("cmd") or circulation.get("dpid") not in (None, ""):
         specs.append(SelectSpec(
@@ -508,7 +508,7 @@ def select_specs(device: Any) -> Tuple[SelectSpec, ...]:
 
 
 # ======================================================================
-# button（A 线一次性动作）
+# button（A 类一次性动作）
 # ======================================================================
 def button_specs(device: Any) -> Tuple[ButtonSpec, ...]:
     pts = _points(device)
@@ -559,7 +559,7 @@ def _group_time_specs(
                     f"{kind}_schedule_{index}_{field}", label,
                 ))
             continue
-        # A 线：只有 list（JSON 回读）+ groups，没有分组 dpid
+        # A 类预约：只有 list（JSON 回读）+ groups，没有分组 dpid
         list_dpid = schedule.get("list")
         groups = int(schedule.get("groups") or 0)
         if list_dpid not in (None, "") and groups:
@@ -573,7 +573,7 @@ def _group_time_specs(
 
 def time_specs(device: Any) -> Tuple[ScheduleTimeSpec, ...]:
     pts = _points(device)
-    dialect = _dialect(pts)
+    protocol_variant = _protocol_variant(pts)
     specs = []
 
     heat_schedule = _group(pts, "schedule_heat")
@@ -582,7 +582,7 @@ def time_specs(device: Any) -> Tuple[ScheduleTimeSpec, ...]:
 
     dhw_schedule = _group(pts, "schedule_dhw")
     if dhw_schedule:
-        label = "热水定时" if dialect == "B4" else ("洗浴预约" if dialect == "A" else "")
+        label = "热水定时" if protocol_variant == "B4" else ("洗浴预约" if protocol_variant == "A" else "")
         specs.extend(_group_time_specs("dhw", "热水预热", dhw_schedule, label))
 
     # B3 洗浴预约：无功能位，按 schedule_wash.packed 建「洗浴预约n」起止
