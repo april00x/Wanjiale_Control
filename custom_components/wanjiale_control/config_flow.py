@@ -23,9 +23,17 @@ from .const import (
     CONF_FEATURE_OVERRIDES,
     CONF_IMEI,
     CONF_PASSWORD,
+    CONF_RELOGIN_DAILY_LIMIT,
+    CONF_RELOGIN_MIN_INTERVAL_MINUTES,
     CONF_RESCAN_DEVICES,
     CONF_USERNAME,
+    DEFAULT_RELOGIN_DAILY_LIMIT,
+    DEFAULT_RELOGIN_MIN_INTERVAL_MINUTES,
     DOMAIN,
+    MAX_RELOGIN_DAILY_LIMIT,
+    MAX_RELOGIN_MIN_INTERVAL_MINUTES,
+    MIN_RELOGIN_DAILY_LIMIT,
+    MIN_RELOGIN_MIN_INTERVAL_MINUTES,
 )
 from .protocol import CredentialError, WanjialeProtocol
 from . import migrate_legacy_overrides
@@ -51,6 +59,15 @@ async def validate_input(hass: HomeAssistant, data: Dict[str, Any]) -> Optional[
         _LOGGER.warning("账号校验失败（无法连接）: %s", exc, exc_info=True)
         return "cannot_connect"
     return None
+
+
+def _clamp_int(value: Any, default: int, minimum: int, maximum: int) -> int:
+    """把选项值收敛到整数区间；None/非法值回落到默认值。"""
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = int(default)
+    return max(minimum, min(maximum, number))
 
 
 class WanjialeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -132,6 +149,19 @@ class WanjialeOptionsFlow(config_entries.OptionsFlow):
                 self.hass.data.setdefault(DOMAIN, {}).setdefault(
                     "_rescan_once", set()
                 ).add(self.config_entry.entry_id)
+            # 数值字段做一次兜底收敛：UI 选择器已限制范围，这里防止旧配置/异常输入
+            user_input[CONF_RELOGIN_MIN_INTERVAL_MINUTES] = _clamp_int(
+                user_input.get(CONF_RELOGIN_MIN_INTERVAL_MINUTES),
+                DEFAULT_RELOGIN_MIN_INTERVAL_MINUTES,
+                MIN_RELOGIN_MIN_INTERVAL_MINUTES,
+                MAX_RELOGIN_MIN_INTERVAL_MINUTES,
+            )
+            user_input[CONF_RELOGIN_DAILY_LIMIT] = _clamp_int(
+                user_input.get(CONF_RELOGIN_DAILY_LIMIT),
+                DEFAULT_RELOGIN_DAILY_LIMIT,
+                MIN_RELOGIN_DAILY_LIMIT,
+                MAX_RELOGIN_DAILY_LIMIT,
+            )
             options.update(user_input)
             return self.async_create_entry(title="", data=options)
 
@@ -141,6 +171,38 @@ class WanjialeOptionsFlow(config_entries.OptionsFlow):
                     CONF_ENABLE_CONTROL_RIGHTS,
                     default=bool(options.get(CONF_ENABLE_CONTROL_RIGHTS, False)),
                 ): bool,
+                vol.Optional(
+                    CONF_RELOGIN_MIN_INTERVAL_MINUTES,
+                    default=_clamp_int(
+                        options.get(CONF_RELOGIN_MIN_INTERVAL_MINUTES),
+                        DEFAULT_RELOGIN_MIN_INTERVAL_MINUTES,
+                        MIN_RELOGIN_MIN_INTERVAL_MINUTES,
+                        MAX_RELOGIN_MIN_INTERVAL_MINUTES,
+                    ),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=MIN_RELOGIN_MIN_INTERVAL_MINUTES,
+                        max=MAX_RELOGIN_MIN_INTERVAL_MINUTES,
+                        step=1,
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
+                vol.Optional(
+                    CONF_RELOGIN_DAILY_LIMIT,
+                    default=_clamp_int(
+                        options.get(CONF_RELOGIN_DAILY_LIMIT),
+                        DEFAULT_RELOGIN_DAILY_LIMIT,
+                        MIN_RELOGIN_DAILY_LIMIT,
+                        MAX_RELOGIN_DAILY_LIMIT,
+                    ),
+                ): selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=MIN_RELOGIN_DAILY_LIMIT,
+                        max=MAX_RELOGIN_DAILY_LIMIT,
+                        step=1,
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
                 # 每次默认 False：只在本次保存时生效，不参与 options 持久化
                 vol.Optional(CONF_RESCAN_DEVICES, default=False): bool,
             }

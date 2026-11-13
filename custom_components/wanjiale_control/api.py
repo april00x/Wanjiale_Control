@@ -156,9 +156,9 @@ REACHABLE_FAIL_THRESHOLD = 6
 # HTTP 设备列表刷新周期（12h）：HTTP 只负责登录与元数据，不参与可用性与控制。
 DEVICE_LIST_REFRESH_SECONDS = 43200.0
 
-# 会话修复条件：局域网与云端会话同时连续 N 轮不可用（≈60s）才重新登录。
-REPAIR_LAN_FAIL_ROUNDS = 6
-REPAIR_CLOUD_FAIL_ROUNDS = 6
+# 会话修复条件：双通道同时不可用连续 N 轮（≈20s）即修复。
+# 单通道可用时绝登录（保护 App 的 HTTP 会话；云端/局域网控制不受登录影响）。
+REPAIR_DUAL_DOWN_ROUNDS = 2
 
 # 云端会话「接收静默超龄」阈值：静默 = 2 × 协商心跳间隔，且不低于 60s
 # （与官方 App 的 heartbeatTime+20000 判死口径同量级；默认生效值 max(2×40s, 60s)=80s）。
@@ -166,19 +166,28 @@ REPAIR_CLOUD_FAIL_ROUNDS = 6
 CLOUD_SOCKET_STALE_SECONDS_FACTOR = 2
 CLOUD_SOCKET_STALE_SECONDS_MIN = 60.0
 
-# 瞬时失败的退避阶梯（2h → 6h → 12h）与登录节流（api 层唯一事实源）。
-# protocol.relogin() 只保留 60s 并发节流，防多线程重复登录，不做 2h 限制。
+# 云端探测失败的退避阶梯（秒）：DEGRADED 下 session_key 已失效时，每轮真实
+# TCP+握手约 3 秒且必然失败，按 10→30→60→300 递增可把无效握手从 ≈8000 次/天
+# 压到 ≈300 次/天；一旦探测成功立即恢复每轮探测。
+CLOUD_PROBE_BACKOFF_STEPS = (10.0, 30.0, 60.0, 300.0)
+
+# 登录失败的两条退避体系：
+# 1) 凭据错误：2h → 6h → 12h，连续 2 次后进入 REAUTH_REQUIRED 终态；
+# 2) 网络/瞬时失败：60s → 5min → 15min，短退避，避免网络故障把冷却阶梯耗尽。
+# protocol.relogin() 只保留 60s 并发节流，防多线程重复登录。
 COOLDOWN_STEPS_SECONDS = (7200.0, 21600.0, 43200.0)
-RELOGIN_MIN_INTERVAL_SECONDS = 7200.0
-RELOGIN_DAILY_LIMIT = 2
+NETWORK_FAIL_BACKOFF_STEPS = (60.0, 300.0, 900.0)
+# 成功登录后的节流：10 分钟最小间隔、每日 6 次。
+# 登录只会替换 App 的 HTTP 会话，不影响其云端长连接与局域网控制。
+RELOGIN_MIN_INTERVAL_SECONDS = 600.0
+RELOGIN_DAILY_LIMIT = 6
 # 凭据类错误连续 N 次即停止自动重登（需人工改密后重载）
 CREDENTIAL_FAIL_THRESHOLD = 2
 
 # 自动重登总开关：
-# 只在「云端会话 + 局域网同时不可用 ≥60s（此时已无法控制任何设备）」时登录，
-# 且有 2h 最小间隔、每日 ≤2 次、凭据错误连续 2 次即停止。
-# 残留风险（尚未真机确认）：HA 侧断网而手机 App 走蜂窝正常时，重登会把 App 顶下线；
-# 若实机验证后不可接受，把常量改回 False 即退化为「全断也不登录」，结构不变。
+# 只在「云端会话 + 局域网同时不可用 ≥2 轮（≈20s，此时已无法控制任何设备）」时登录，
+# 且有 10 分钟最小间隔、每日 ≤6 次、凭据错误连续 2 次即停止。
+# 登录只替换 App 的 HTTP 会话，不会中断其云端长连接与局域网控制。
 AUTO_RELOGIN_ENABLED = True
 
 
@@ -1679,6 +1688,8 @@ class WanjialeApi:
         feature_overrides: Optional[Dict[str, Dict[str, str]]] = None,
         enable_control_rights: bool = False,
         login_name: str = "",
+        relogin_min_interval: float = RELOGIN_MIN_INTERVAL_SECONDS,
+        relogin_daily_limit: int = RELOGIN_DAILY_LIMIT,
     ) -> None:
         self._protocol = protocol
         self._devices: List[WanjialeDevice] = []
@@ -1694,6 +1705,8 @@ class WanjialeApi:
         # 会话状态机：OK / DEGRADED / RECOVERING / COOLDOWN / REAUTH_REQUIRED
         self._auth_state: str = "OK"
         # 会话修复状态机（B3）：退避时刻、最小间隔、每日上限、凭据失败计数
+        self._relogin_min_interval = float(relogin_min_interval)
+        self._relogin_daily_limit = int(relogin_daily_limit)
         self._next_auth_retry_at: float = 0.0
         self._auth_last_login_at: float = 0.0
         self._auth_daily_count: int = 0
@@ -1705,6 +1718,15 @@ class WanjialeApi:
         self._lan_ok: bool = True
         self._cloud_down_rounds: int = 0
         self._lan_fail_rounds: int = 0
+        # 双通道同时不可用的连续轮数（会话修复的唯一触发条件）
+        self._dual_down_rounds: int = 0
+        # 网络/瞬时登录失败的短退避档位（与凭据错误的 _cooldown_step 分离）
+        self._transient_backoff_step: int = 0
+        # 修复被节流拒绝的原因去重（每种原因只记一次日志）
+        self._repair_block_logged: Dict[str, bool] = {}
+        # 云端探测退避：连续失败次数与下次允许真实握手的时间戳
+        self._cloud_probe_fail_streak: int = 0
+        self._next_cloud_probe_at: float = 0.0
         # 本轮各设备局域网查询是否成功（did → bool），每轮开头清空
         self._lan_leg_ok: Dict[str, bool] = {}
         # 局域网查询失败退避：did → 允许再次尝试局域网的时间戳（见 _arm_lan_backoff）
@@ -1952,11 +1974,17 @@ class WanjialeApi:
             # 该函数内部已兜住常规失败，走到这里属意料之外；有退避窗口，不会每轮触发
             _LOGGER.error("局域网查询 %s 异常：%s", dev.name, err, exc_info=True)
         if isinstance(result, dict) and result.get("error"):
+            # 保留局域网失败原因：ERROR 里只写「云端未建立长连接」会掩盖真正的
+            # 局域网超时/认证失败，排查时容易误判成纯云端问题。
+            lan_reason = result.get("error")
             try:
                 result = self._query_device_cloud(dev, timeout)
             except Exception as err:  # noqa: BLE001
                 # 云端是最后一条通道，它异常即本次查询失败（与轮询循环共用失败态去重）
                 self._report_query_failure(dev, err)
+                return {"error": f"局域网：{lan_reason}；云端：{err}"}
+            if isinstance(result, dict) and result.get("error"):
+                result = {"error": f"局域网：{lan_reason}；云端：{result.get('error')}"}
         return result
 
     def _query_device_cloud(self, dev: WanjialeDevice, timeout: float) -> Dict[str, Any]:
@@ -1994,6 +2022,10 @@ class WanjialeApi:
             self._arm_lan_backoff(dev)
             return {"error": "局域网查询失败"}
         if isinstance(result, dict) and result.get("error"):
+            # 查询失败说明这条链路已不可信：主动关闭，退避到期后重建。
+            # 只靠心跳 sendall 报错回收会漏掉「静默半开」场景——那时 sendall 仍会
+            # 成功，链路永远不关，表现为每 300s 在同一条死连接上超时一次的死循环。
+            self._protocol.close_local(dev.did)
             self._arm_lan_backoff(dev)
         else:
             self._lan_retry_after.pop(dev.did, None)
@@ -2013,7 +2045,11 @@ class WanjialeApi:
         if dev._query_failed_logged:
             return
         dev._query_failed_logged = True
-        _LOGGER.error("设备 %s 状态查询失败（局域网与云端均不可用）：%s", dev.name, reason)
+        # 双断不代表最终失败：随后会按策略自动重登，因此降到 WARNING。
+        _LOGGER.warning(
+            "设备 %s 状态查询失败（局域网与云端均不可用）：%s；准备自动重登",
+            dev.name, reason,
+        )
 
     async def async_refresh_all(self) -> None:
         """异步刷新（HA coordinator 调用）。"""
@@ -2138,13 +2174,26 @@ class WanjialeApi:
             # 终态：跳过探测，计数与 DEGRADED 迁移全部冻结（仅重载可退出）。
             # 否则凭据失效期间 socket 必为空，每轮都会真实 TCP+握手一次（≈8640 次/天）。
             return
-        cloud_ok = self._probe_cloud_session()
+        now = time.time()
+        probed = now >= self._next_cloud_probe_at
+        if probed:
+            cloud_ok = self._probe_cloud_session()
+            self._record_cloud_probe_result(cloud_ok, now)
+        else:
+            # 退避窗口内不再真实握手：沿用「云端不可用」判定，失败轮数照常累计，
+            # 否则会话修复阈值会被探测退避拖慢。
+            cloud_ok = False
         was_cloud_ok = self._cloud_session_ok
 
         self._cloud_session_ok = cloud_ok
         self._lan_ok = lan_round_ok
         self._cloud_down_rounds = 0 if cloud_ok else self._cloud_down_rounds + 1
         self._lan_fail_rounds = 0 if lan_round_ok else self._lan_fail_rounds + 1
+        self._dual_down_rounds = (
+            self._dual_down_rounds + 1
+            if not cloud_ok and not lan_round_ok
+            else 0
+        )
 
         if cloud_ok:
             if not was_cloud_ok:
@@ -2154,10 +2203,14 @@ class WanjialeApi:
                 self._auth_state = "OK"
             self._next_auth_retry_at = 0.0
             self._cooldown_step = 0
+            self._transient_backoff_step = 0
+            self._repair_block_logged.clear()
             return
 
         if lan_round_ok:
             # 有一条通道能控就不登录（不碰官方 App 会话），只标记降级
+            self._transient_backoff_step = 0
+            self._repair_block_logged.clear()
             if self._auth_state in ("OK", "COOLDOWN"):
                 self._auth_state = "DEGRADED"
                 self._next_auth_retry_at = 0.0
@@ -2166,15 +2219,45 @@ class WanjialeApi:
                 )
             return
 
-        # 两条通道都不可用：只有 LAN 与云端会话同时连续失败到阈值才修复
+        # 双通道同时不可用：连续 2 轮确认后立即修复（单通道可用时绝不登录）
         if self._auth_repair_needed():
+            # 本轮若跳过了探测，修复前强制复核一次：避免云端其实已自愈时被误判成
+            # 全断而触发登录（会顶掉 App 的 HTTP 会话并消耗每日额度）。
+            if not probed and self._probe_cloud_session():
+                self._record_cloud_probe_result(True)
+                self._cloud_session_ok = True
+                self._cloud_down_rounds = 0
+                self._dual_down_rounds = 0
+                if self._auth_state in ("DEGRADED", "COOLDOWN"):
+                    self._auth_state = "OK"
+                self._next_auth_retry_at = 0.0
+                self._cooldown_step = 0
+                self._transient_backoff_step = 0
+                self._repair_block_logged.clear()
+                if not was_cloud_ok:
+                    _LOGGER.info("云端长连接已恢复")
+                return
             self._attempt_session_repair()
 
-    def _auth_repair_needed(self) -> bool:
-        return (
-            self._lan_fail_rounds >= REPAIR_LAN_FAIL_ROUNDS
-            and self._cloud_down_rounds >= REPAIR_CLOUD_FAIL_ROUNDS
+    def _record_cloud_probe_result(self, ok: bool, now: float = 0.0) -> None:
+        """维护云端探测退避：成功立即恢复每轮探测，失败按阶梯递增。
+
+        `now` 用调用方本轮的时间戳，保证同一轮内记录与判断基准一致。
+        """
+        if ok:
+            self._cloud_probe_fail_streak = 0
+            self._next_cloud_probe_at = 0.0
+            return
+        self._cloud_probe_fail_streak += 1
+        step = min(
+            self._cloud_probe_fail_streak - 1,
+            len(CLOUD_PROBE_BACKOFF_STEPS) - 1,
         )
+        self._next_cloud_probe_at = (now or time.time()) + CLOUD_PROBE_BACKOFF_STEPS[step]
+
+    def _auth_repair_needed(self) -> bool:
+        """双通道同时不可用连续 N 轮才修复；单通道可用时永不登录。"""
+        return self._dual_down_rounds >= REPAIR_DUAL_DOWN_ROUNDS
 
     def _reset_daily_counter_if_needed(self) -> None:
         today = time.strftime("%Y-%m-%d")
@@ -2182,17 +2265,36 @@ class WanjialeApi:
             self._auth_daily_date = today
             self._auth_daily_count = 0
 
+    def _log_repair_block(self, key: str, message: str) -> None:
+        """记录修复被节流拒绝的原因；同一原因只打一次，避免每轮刷屏。"""
+        if self._repair_block_logged.get(key):
+            return
+        self._repair_block_logged[key] = True
+        _LOGGER.info(message)
+
     def _enter_cooldown(self, reason: str) -> None:
-        """瞬时失败：按 2h → 6h → 12h 阶梯退避（到达末级后保持 12h）。"""
+        """凭据错误：按 2h → 6h → 12h 阶梯退避（连续 2 次后进入终态）。"""
         step = min(self._cooldown_step, len(COOLDOWN_STEPS_SECONDS) - 1)
         wait = COOLDOWN_STEPS_SECONDS[step]
         self._cooldown_step = min(step + 1, len(COOLDOWN_STEPS_SECONDS) - 1)
         self._next_auth_retry_at = time.time() + wait
         self._auth_state = "COOLDOWN"
-        _LOGGER.debug(
-            "会话修复暂停（%s），%d 秒后允许重试",
-            reason, int(wait),
+        _LOGGER.info("会话修复暂停（%s），%d 秒后允许重试", reason, int(wait))
+
+    def _enter_transient_backoff(self, reason: str) -> None:
+        """网络/瞬时失败：按 60s → 5min → 15min 短退避（末级保持 15min）。
+
+        与凭据错误的 2h/6h/12h 阶梯分离：网络故障不应把冷却额度耗尽，
+        否则网络恢复后真正需要登录时反而被长时间挡住。
+        """
+        step = min(self._transient_backoff_step, len(NETWORK_FAIL_BACKOFF_STEPS) - 1)
+        wait = NETWORK_FAIL_BACKOFF_STEPS[step]
+        self._transient_backoff_step = min(
+            step + 1, len(NETWORK_FAIL_BACKOFF_STEPS) - 1
         )
+        self._next_auth_retry_at = time.time() + wait
+        self._auth_state = "COOLDOWN"
+        _LOGGER.info("会话修复暂停（%s），%d 秒后允许重试", reason, int(wait))
 
     def _enter_reauth_required(self, reason: Any) -> None:
         """凭据连续失效：停止自动重登，等用户改密后重载。"""
@@ -2205,21 +2307,35 @@ class WanjialeApi:
         )
 
     def _attempt_session_repair(self) -> None:
-        """全断后的唯一修复入口：登录 + 设备列表确认，带节流与退避。"""
+        """双通道全断后的唯一修复入口：登录 + 设备列表确认，带节流与退避。"""
         if not AUTO_RELOGIN_ENABLED or self._auth_state == "REAUTH_REQUIRED":
             return
         now = time.time()
         if now < self._next_auth_retry_at:      # COOLDOWN 未到期
+            self._log_repair_block(
+                "cooldown",
+                f"会话修复冷却中，剩余 {max(0, int(self._next_auth_retry_at - now))} 秒",
+            )
             return
-        if now - self._auth_last_login_at < RELOGIN_MIN_INTERVAL_SECONDS:
-            return                              # 2h 最小间隔（不计失败、不登录）
+        if now - self._auth_last_login_at < self._relogin_min_interval:
+            self._log_repair_block(
+                "min_interval",
+                f"距上次重登不足 {int(self._relogin_min_interval // 60)} 分钟，暂不登录",
+            )
+            return
         self._reset_daily_counter_if_needed()
-        if self._auth_daily_count >= RELOGIN_DAILY_LIMIT:
+        if self._auth_daily_count >= self._relogin_daily_limit:
             # 当日上限：次日零点再允许（本轮只置时间，避免每轮重复日志）
             if self._next_auth_retry_at < now:
                 self._next_auth_retry_at = _next_midnight(now)
+            self._log_repair_block(
+                "daily_limit",
+                f"今日重登已达 {self._relogin_daily_limit} 次，推迟到次日 00:00",
+            )
             return
 
+        # 本次真正进入登录流程：清空拦截日志，下一轮阻塞原因可重新记录
+        self._repair_block_logged.clear()
         previous = self._auth_state
         self._auth_state = "RECOVERING"
         try:
@@ -2231,29 +2347,36 @@ class WanjialeApi:
             else:
                 self._enter_cooldown(f"凭据错误 {self._credential_fail_streak} 次")
             return
-        except Exception as err:  # noqa: BLE001 - 瞬时故障统一退避
+        except Exception as err:  # noqa: BLE001 - 网络/瞬时故障统一短退避
             self._credential_fail_streak = 0
             _LOGGER.debug("会话修复失败（瞬时故障）：%s", err)
-            self._enter_cooldown("登录失败")
+            self._enter_transient_backoff("登录失败")
             return
 
         if not ok:
             # 60s 并发节流 / 协议已关闭：既不算失败也不改计数
+            _LOGGER.debug("会话修复未执行（并发节流或集成已卸载）")
             self._auth_state = previous
             return
 
         self._credential_fail_streak = 0
         self._cooldown_step = 0
+        self._transient_backoff_step = 0
         self._auth_last_login_at = time.time()
         self._auth_daily_count += 1
         self._next_auth_retry_at = 0.0
+        # 会话已重建：清掉探测退避，让下一轮立即真实握手确认云端
+        self._cloud_probe_fail_streak = 0
+        self._next_cloud_probe_at = 0.0
+        self._dual_down_rounds = 0
+        self._repair_block_logged.clear()
 
-        # 登录后再拉一次设备列表确认会话真的可用；仍失败则按瞬时故障进入 COOLDOWN
+        # 登录后再拉一次设备列表确认会话真的可用；仍失败按瞬时故障短退避
         try:
             self._protocol.get_devices()
         except Exception as err:  # noqa: BLE001
             _LOGGER.debug("重新登录后设备列表仍失败：%s", err)
-            self._enter_cooldown("登录后设备列表失败")
+            self._enter_transient_backoff("登录后设备列表失败")
             return
 
         self._http_ok = True

@@ -35,10 +35,14 @@
         "description": "以下设置对整个账号生效，与具体设备无关。",
         "data": {
           "enable_control_rights": "启用多端操作权抢占（默认关闭）",
+          "relogin_min_interval_minutes": "两次自动重登的最小间隔（分钟）",
+          "relogin_daily_limit": "每日自动重登次数上限",
           "rescan_devices": "重新获取设备"
         },
         "data_description": {
           "enable_control_rights": "开启后，每次控制前会先用登录手机号抢占设备操作权（对应官方应用的多端互斥机制）。若你的机型不校验操作权，保持关闭即可。",
+          "relogin_min_interval_minutes": "仅在局域网与云端同时不可用连续 2 轮时才会自动重登；两次重登至少间隔该时长。调小恢复更快，但手机 App 的 HTTP 会话会被更频繁地替换（云端长连接与局域网控制不受影响）。默认 10 分钟。",
+          "relogin_daily_limit": "当天最多自动重登的次数，达到上限后推迟到次日 00:00。默认 6 次。",
           "rescan_devices": "勾选并保存后，本次重载会重新从云端拉取设备，使新设备加入 Home Assistant。该选项不会被保存，仅本次生效。"
         }
       },

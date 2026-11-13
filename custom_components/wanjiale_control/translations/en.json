@@ -35,10 +35,14 @@
         "description": "These settings apply to the whole account, not to a single device.",
         "data": {
           "enable_control_rights": "Enable multi-client control-rights preemption (off by default)",
+          "relogin_min_interval_minutes": "Minimum interval between automatic re-logins (minutes)",
+          "relogin_daily_limit": "Maximum automatic re-logins per day",
           "rescan_devices": "Re-scan devices"
         },
         "data_description": {
           "enable_control_rights": "When enabled, the login phone number is used to claim the device control right before each command (mirrors the official app's multi-client exclusion). Keep it off if your model does not check control rights.",
+          "relogin_min_interval_minutes": "Automatic re-login only happens after both LAN and cloud have been unavailable for 2 consecutive rounds; two re-logins are at least this far apart. Smaller values recover faster but replace the phone app's HTTP session more often (cloud long connection and LAN control are unaffected). Default: 10 minutes.",
+          "relogin_daily_limit": "Maximum number of automatic re-logins per day; once reached, the next attempt waits until 00:00 the following day. Default: 6.",
           "rescan_devices": "When checked and saved, this reload re-fetches devices from the cloud so newly added devices are admitted. The option is not persisted and applies to this reload only."
         }
       },

@@ -23,8 +23,12 @@ from .const import (
     CONF_FEATURE_OVERRIDES,
     CONF_IMEI,
     CONF_PASSWORD,
+    CONF_RELOGIN_DAILY_LIMIT,
+    CONF_RELOGIN_MIN_INTERVAL_MINUTES,
     CONF_USERNAME,
     CORE_PLATFORMS,
+    DEFAULT_RELOGIN_DAILY_LIMIT,
+    DEFAULT_RELOGIN_MIN_INTERVAL_MINUTES,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
@@ -242,6 +246,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         enable_control_rights=bool(entry.options.get(CONF_ENABLE_CONTROL_RIGHTS, False)),
         # 登录名即账号手机号，操作权抢占需要它
         login_name=username,
+        # 会话重登策略：选项页以「分钟 / 次数」保存，这里换算为内部单位
+        relogin_min_interval=float(
+            entry.options.get(
+                CONF_RELOGIN_MIN_INTERVAL_MINUTES,
+                DEFAULT_RELOGIN_MIN_INTERVAL_MINUTES,
+            )
+        ) * 60,
+        relogin_daily_limit=int(
+            entry.options.get(CONF_RELOGIN_DAILY_LIMIT, DEFAULT_RELOGIN_DAILY_LIMIT)
+        ),
     )
 
     try:
